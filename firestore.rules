@@ -1,0 +1,72 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny all access to unlisted collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // PairPlay Rooms Collection
+    match /rooms/{roomCode} {
+      // Helper functions
+      function isSignedIn() {
+        return request.auth != null && request.auth.uid != null;
+      }
+
+      function isRoomHost() {
+        return isSignedIn() && resource.data.hostUid == request.auth.uid;
+      }
+
+      function isRoomGuest() {
+        return isSignedIn() && resource.data.guestUid == request.auth.uid;
+      }
+
+      function isRoomMember() {
+        return isRoomHost() || isRoomGuest();
+      }
+
+      function isValidRoomCode() {
+        return roomCode.size() == 6;
+      }
+
+      // Read rules:
+      // 1. A signed-in user can fetch an individual room doc by room code to join.
+      // 2. Room listing queries (listing all rooms) are strictly denied.
+      allow get: if isSignedIn() && isValidRoomCode();
+      allow list: if false;
+
+      // Create rules:
+      // Must be signed in, roomCode must be 6 chars, creator must be hostUid
+      allow create: if isSignedIn()
+        && isValidRoomCode()
+        && request.resource.data.hostUid == request.auth.uid
+        && request.resource.data.roomCode == roomCode
+        && request.resource.data.player1.name is string
+        && request.resource.data.player1.name.size() <= 25
+        && request.resource.data.player1.name.size() >= 1;
+
+      // Update rules:
+      // Either:
+      // 1. An existing room member (host or guest) updating game state / heartbeat / leaving
+      // 2. A new guest joining an empty guest slot (guestUid == null -> guestUid == request.auth.uid)
+      allow update: if isSignedIn() && (
+        // Case A: Room Member modifying game
+        (isRoomMember() && request.resource.data.hostUid == resource.data.hostUid)
+        ||
+        // Case B: Joining as guest into empty slot
+        (
+          resource.data.guestUid == null
+          && request.resource.data.guestUid == request.auth.uid
+          && request.resource.data.hostUid == resource.data.hostUid
+          && request.resource.data.player2.name is string
+          && request.resource.data.player2.name.size() <= 25
+        )
+      );
+
+      // Delete rules:
+      // Only the host can delete the room document
+      allow delete: if isRoomHost();
+    }
+  }
+}
