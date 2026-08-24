@@ -3,6 +3,7 @@ import { Flame, Sparkles, RefreshCw, FastForward, Check, Heart } from 'lucide-re
 import { PlayerInfo, PlayMode, RoomData } from '../../types';
 import { TRUTH_OR_DARE_CARDS, TruthOrDareCategory, TruthOrDareCard } from '../../data/truthOrDareData';
 import { soundManager } from '../../utils/audio';
+import { roundContentIndex } from '../../utils/rounds';
 
 interface TruthOrDareGameProps {
   playMode: PlayMode;
@@ -62,7 +63,8 @@ export const TruthOrDareGame: React.FC<TruthOrDareGameProps> = ({
       (item) => item.type === type && activeCategories.includes(item.category)
     );
     const pool = filtered.length > 0 ? filtered : TRUTH_OR_DARE_CARDS.filter((i) => i.type === type);
-    const randomPick = pool[Math.floor(Math.random() * pool.length)];
+    const seed = onlineRoom?.contentSeed ?? Number(sessionStorage.getItem('pairplay_content_seed') || 1);
+    const randomPick = pool[roundContentIndex(pool.length, currentRound, seed, `truth-or-dare-${type}`)];
     setCurrentItem(randomPick);
     if (playMode === 'online' && onUpdateOnlineGameState) onUpdateOnlineGameState({ type: 'truth-dare-select', card: randomPick });
   };

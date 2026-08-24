@@ -3,6 +3,7 @@ import { HelpCircle, EyeOff, Check, Heart, Sparkles } from 'lucide-react';
 import { PlayerInfo, PlayMode, RoomData } from '../../types';
 import { WOULD_YOU_RATHER_QUESTIONS, WouldYouRatherChoice } from '../../data/wouldYouRatherData';
 import { soundManager } from '../../utils/audio';
+import { roundContentIndex } from '../../utils/rounds';
 
 interface WouldYouRatherGameProps {
   playMode: PlayMode;
@@ -29,7 +30,7 @@ export const WouldYouRatherGame: React.FC<WouldYouRatherGameProps> = ({
   onRequestPassDevice,
   onUpdateOnlineGameState,
 }) => {
-  const index = (currentRound - 1) % WOULD_YOU_RATHER_QUESTIONS.length;
+  const index = roundContentIndex(WOULD_YOU_RATHER_QUESTIONS.length, currentRound, onlineRoom?.contentSeed ?? Number(sessionStorage.getItem('pairplay_content_seed') || 1), 'would-you-rather');
   const item: WouldYouRatherChoice = WOULD_YOU_RATHER_QUESTIONS[index];
 
   // Local state
@@ -61,7 +62,7 @@ export const WouldYouRatherGame: React.FC<WouldYouRatherGameProps> = ({
 
     soundManager.playSelect();
 
-    await onUpdateOnlineGameState({ type: 'choice', value: selectedOption });
+    await onUpdateOnlineGameState({ type: 'choice', value: selectedOption, prompt: `${item.optionA} or ${item.optionB}` });
   };
 
   const activePlayer = localTurn === 'p1' ? player1 : player2;

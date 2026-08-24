@@ -11,6 +11,8 @@ import {
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './firebase';
 import { RoomData, GameId, OnlineGameAction, PlayerInfo, RoundResultSummary } from '../types';
+import { EMOJI_DECODER_PUZZLES } from '../data/emojiDecoderData';
+import { ROUND_RESULT_DELAY_MS, roundContentIndex } from '../utils/rounds';
 
 // Safe uppercase characters excluding 0, O, 1, I, L
 const SAFE_CHARS = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
@@ -61,6 +63,8 @@ export async function createRoomInFirestore(
     roundResult: null,
     nextRoundAt: null,
     roundVersion: 1,
+    contentSeed: Date.now() ^ Math.floor(Math.random() * 0x7fffffff),
+    roundHistory: [],
     closeEnoughVotes: {},
     createdAt: Date.now(),
     lastActiveAt: Date.now(),
@@ -182,6 +186,7 @@ export async function setRoomGameSelection(
       currentGameId: gameId, totalRounds, currentRound: 1, score1: 0, score2: 0,
       status: 'playing', gameState: null, roundResult: null, nextRoundAt: null,
       closeEnoughVotes: {}, roundVersion: (room.roundVersion || 0) + 1,
+      contentSeed: Date.now() ^ Math.floor(Math.random() * 0x7fffffff), roundHistory: [],
       lastActiveAt: Date.now(), rematchRequestedBy: null,
     });
   });
@@ -192,6 +197,7 @@ const fuzzyMatch = (a: unknown, b: unknown) => {
   const left = normalized(a); const right = normalized(b);
   return Boolean(left && right && (left === right || left.includes(right) || right.includes(left)));
 };
+const strictWord = (value: unknown) => String(value ?? '').trim().toLocaleLowerCase().replace(/[^a-z0-9]/g, '');
 
 function winnerFor(gameId: GameId, p1: unknown, p2: unknown, round: number): Pick<RoundResultSummary, 'isMatch' | 'roundWinner'> {
   if (gameId === 'rock-paper-scissors') {
@@ -222,18 +228,30 @@ export async function submitRoomAction(
     let completed = false;
     let forcedWinner: 'p1' | 'p2' | 'draw' | null | undefined;
     const answerKey = isP1 ? 'p1Answer' : 'p2Answer';
-    if (action.type === 'answer' || action.type === 'choice') {
-      if (typeof action.value !== 'string' || !action.value.trim()) throw new Error('An answer is required.');
+    if (action.type === 'word-answer') {
+      if (gameId !== 'word-connection') throw new Error('Invalid action for this game.');
+      const attempt = Number(state.attempt || 1);
+      if (action.expectedAttempt !== attempt) throw new Error('This attempt has already changed.');
+      if (!strictWord(action.value)) throw new Error('An answer is required.');
       if (state[answerKey]) throw new Error('Your answer was already submitted.');
+      state.prompt = state.prompt || action.prompt;
       state[answerKey] = action.value.trim();
-      if (gameId === 'word-connection' && state.p1Answer && state.p2Answer) {
-        const attempt = Number(state.attempts || 1);
-        if (!fuzzyMatch(state.p1Answer, state.p2Answer) && attempt < 5) {
-          state.clues = [state.p1Answer, state.p2Answer]; state.attempts = attempt + 1;
+      if (state.p1Answer && state.p2Answer) {
+        const entry = { attempt, player1Word: state.p1Answer, player2Word: state.p2Answer };
+        state.attemptHistory = [...(state.attemptHistory || []), entry];
+        const matches = strictWord(state.p1Answer) === strictWord(state.p2Answer);
+        if (!matches && attempt < 5) {
+          state.clues = [state.p1Answer, state.p2Answer]; state.attempt = attempt + 1;
           delete state.p1Answer; delete state.p2Answer;
           transaction.update(roomRef, { gameState: state, lastActiveAt: Date.now() }); return;
         }
+        completed = true;
       }
+    } else if (action.type === 'answer' || action.type === 'choice') {
+      if (typeof action.value !== 'string' || !action.value.trim()) throw new Error('An answer is required.');
+      if (state[answerKey]) throw new Error('Your answer was already submitted.');
+      state.prompt = state.prompt || action.prompt;
+      state[answerKey] = action.value.trim();
       completed = Boolean(state.p1Answer && state.p2Answer);
     } else if (action.type === 'tic-tac-toe-move') {
       const oldBoard = Array.isArray(state.board) ? [...state.board] : Array(9).fill(null);
@@ -265,10 +283,18 @@ export async function submitRoomAction(
     } else if (action.type === 'emoji-guess') {
       const decoderP1 = room.currentRound % 2 === 1;
       if (isP1 !== decoderP1) throw new Error('Only the decoder can guess.');
-      state.answer = state.answer || action.expectedAnswer;
-      if (normalized(state.answer) !== normalized(action.expectedAnswer)) throw new Error('Puzzle mismatch.');
+      const puzzlePool = room.currentRound % 5 === 0 ? EMOJI_DECODER_PUZZLES.filter(item => item.region === 'global') : EMOJI_DECODER_PUZZLES.filter(item => item.region === 'india');
+      const expectedPuzzle = puzzlePool[roundContentIndex(puzzlePool.length, room.currentRound, room.contentSeed, 'emoji-decoder')];
+      const puzzle = EMOJI_DECODER_PUZZLES.find(item => item.id === action.puzzleId);
+      if (!puzzle) throw new Error('Puzzle mismatch.');
+      if (puzzle.id !== expectedPuzzle?.id) throw new Error('Puzzle mismatch.');
+      state.puzzleId = state.puzzleId || puzzle.id;
+      if (state.puzzleId !== puzzle.id) throw new Error('Puzzle mismatch.');
+      state.answer = puzzle.answer;
+      state.prompt = `${puzzle.emojis} (${puzzle.category})`;
       state.attempts = Number(state.attempts || 0) + 1;
-      if (action.giveUp || fuzzyMatch(action.value, state.answer)) { state.p1Answer = decoderP1 ? action.value : state.answer; state.p2Answer = decoderP1 ? state.answer : action.value; completed = true; forcedWinner = action.giveUp ? undefined : (decoderP1 ? 'p1' : 'p2'); }
+      const accepted = [puzzle.answer, ...puzzle.acceptedVariations].some(answer => strictWord(answer) === strictWord(action.value));
+      if (action.giveUp || accepted) { state.p1Answer = decoderP1 ? action.value : state.answer; state.p2Answer = decoderP1 ? state.answer : action.value; completed = true; forcedWinner = action.giveUp ? undefined : (decoderP1 ? 'p1' : 'p2'); }
     } else if (action.type === 'memory-init') {
       if (!isP1) throw new Error('Only the host can prepare the deck.');
       if (state.deck) return;
@@ -307,11 +333,13 @@ export async function submitRoomAction(
     }
     const add1 = resultBase.roundWinner === 'p1' || (!resultBase.roundWinner && resultBase.isMatch) ? 1 : 0;
     const add2 = resultBase.roundWinner === 'p2' || (!resultBase.roundWinner && resultBase.isMatch) ? 1 : 0;
-    const result: RoundResultSummary = { round: room.currentRound, player1Answer: state.p1Answer, player2Answer: state.p2Answer, ...resultBase, scoreAwardedP1: add1, scoreAwardedP2: add2 };
+    const ticNote = gameId === 'tic-tac-toe' ? (resultBase.roundWinner === 'draw' ? 'Draw — final board complete. Player 1 was X; Player 2 was O.' : `${resultBase.roundWinner === 'p1' ? room.player1.name : room.player2?.name} won. Player 1 was X; Player 2 was O.`) : undefined;
+    const result: RoundResultSummary = { round: room.currentRound, prompt: state.prompt || state.selectedCard?.prompt, player1Answer: gameId === 'tic-tac-toe' ? `${room.player1.name}: X` : state.p1Answer, player2Answer: gameId === 'tic-tac-toe' ? `${room.player2?.name}: O` : state.p2Answer, ...resultBase, scoreAwardedP1: add1, scoreAwardedP2: add2, note: ticNote, attemptHistory: state.attemptHistory };
     const isLast = room.currentRound >= room.totalRounds;
+    const history = (room.roundHistory || []).some(item => item.round === room.currentRound) ? room.roundHistory : [...(room.roundHistory || []), result];
     transaction.update(roomRef, {
       gameState: state, roundResult: result, score1: room.score1 + add1, score2: room.score2 + add2,
-      status: isLast ? 'game_over' : 'round_result', nextRoundAt: isLast ? null : Date.now() + 4000,
+      status: isLast ? 'game_over' : 'round_result', nextRoundAt: isLast ? null : Date.now() + ROUND_RESULT_DELAY_MS, roundHistory: history,
       closeEnoughVotes: {}, lastActiveAt: Date.now(),
     });
   });

@@ -35,10 +35,11 @@ export interface GameMeta {
 export type PlayMode = 'local' | 'online';
 
 export type OnlineGameAction =
-  | { type: 'answer'; value: string }
-  | { type: 'choice'; value: string }
+  | { type: 'answer'; value: string; prompt?: string }
+  | { type: 'choice'; value: string; prompt?: string }
   | { type: 'tic-tac-toe-move'; index: number }
-  | { type: 'emoji-guess'; value: string; expectedAnswer: string; giveUp?: boolean }
+  | { type: 'emoji-guess'; value: string; puzzleId: string; giveUp?: boolean }
+  | { type: 'word-answer'; value: string; expectedAttempt: number; prompt?: string }
   | { type: 'truths-author'; statements: string[]; lieIndex: number }
   | { type: 'truths-guess'; index: number }
   | { type: 'truth-dare-select'; card: unknown }
@@ -81,6 +82,8 @@ export interface RoomData {
   roundResult?: RoundResultSummary | null;
   nextRoundAt?: number | null;
   roundVersion?: number;
+  contentSeed: number;
+  roundHistory: RoundResultSummary[];
   closeEnoughVotes?: Record<string, boolean>;
   createdAt: number;
   lastActiveAt: number;
@@ -89,6 +92,7 @@ export interface RoomData {
 
 export interface RoundResultSummary {
   round: number;
+  prompt?: string;
   player1Answer?: string | number | boolean | null;
   player2Answer?: string | number | boolean | null;
   isMatch?: boolean;
@@ -97,4 +101,5 @@ export interface RoundResultSummary {
   scoreAwardedP2?: number;
   note?: string;
   closeEnoughVotes?: number;
+  attemptHistory?: Array<{ attempt: number; player1Word: string; player2Word: string }>;
 }

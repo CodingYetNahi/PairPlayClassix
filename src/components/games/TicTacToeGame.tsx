@@ -26,7 +26,7 @@ interface TicTacToeGameProps {
   onlineRoom: RoomData | null;
   onRoundComplete: (p1Answer: string, p2Answer: string, isMatch: boolean, roundWinner?: 'p1' | 'p2' | null) => void;
   onRequestPassDevice: (nextPlayer: PlayerInfo, promptText: string, onReady: () => void) => void;
-  onUpdateOnlineGameState?: (state: any) => void;
+  onUpdateOnlineGameState?: (state: any) => Promise<void>;
 }
 
 export const TicTacToeGame: React.FC<TicTacToeGameProps> = ({
@@ -44,6 +44,7 @@ export const TicTacToeGame: React.FC<TicTacToeGameProps> = ({
   // Local board state
   const [board, setBoard] = useState<BoardState>(Array(9).fill(null));
   const [currentTurn, setCurrentTurn] = useState<'X' | 'O'>('X');
+  const [isSubmittingMove, setIsSubmittingMove] = useState(false);
 
   // Online board state from room
   const onlineBoard: BoardState = onlineRoom?.gameState?.board || Array(9).fill(null);
@@ -90,14 +91,16 @@ export const TicTacToeGame: React.FC<TicTacToeGameProps> = ({
     setCurrentTurn(currentTurn === 'X' ? 'O' : 'X');
   };
 
-  const handleCellClickOnline = (index: number) => {
-    if (!isMyTurnOnline || onlineBoard[index] || !onUpdateOnlineGameState) return;
+  const handleCellClickOnline = async (index: number) => {
+    if (isSubmittingMove || !isMyTurnOnline || onlineBoard[index] || !onUpdateOnlineGameState || onlineRoom?.status !== 'playing') return;
 
     soundManager.playTap();
-    const newBoard = [...onlineBoard];
-    newBoard[index] = onlineTurn;
-
-    onUpdateOnlineGameState({ type: 'tic-tac-toe-move', index });
+    setIsSubmittingMove(true);
+    try {
+      await onUpdateOnlineGameState({ type: 'tic-tac-toe-move', index });
+    } finally {
+      setIsSubmittingMove(false);
+    }
   };
 
   const currentBoard = playMode === 'local' ? board : onlineBoard;
@@ -143,7 +146,7 @@ export const TicTacToeGame: React.FC<TicTacToeGameProps> = ({
             key={idx}
             type="button"
             onClick={() => (playMode === 'local' ? handleCellClickLocal(idx) : handleCellClickOnline(idx))}
-            disabled={Boolean(cell) || (playMode === 'online' && !isMyTurnOnline)}
+            disabled={Boolean(cell) || (playMode === 'online' && (!isMyTurnOnline || isSubmittingMove))}
             className={`h-24 sm:h-28 rounded-2xl border-2 font-black text-3xl sm:text-4xl flex items-center justify-center transition-all cursor-pointer select-none active:scale-95 ${
               cell === 'X'
                 ? 'bg-pink-500 text-white border-pink-600 shadow-sm'
