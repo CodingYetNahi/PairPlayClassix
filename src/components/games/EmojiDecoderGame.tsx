@@ -39,6 +39,7 @@ export const EmojiDecoderGame: React.FC<EmojiDecoderGameProps> = ({
   const [guessInput, setGuessInput] = useState('');
   const [showHint, setShowHint] = useState(false);
   const [attempts, setAttempts] = useState(0);
+  const isAssignedDecoder = playMode === 'local' || currentUid === (isP1Guesser ? onlineRoom?.hostUid : onlineRoom?.guestUid);
 
   const normalize = (str: string) =>
     str.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
@@ -52,7 +53,7 @@ export const EmojiDecoderGame: React.FC<EmojiDecoderGameProps> = ({
 
   const handleGuess = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!guessInput.trim()) return;
+    if (!guessInput.trim() || !isAssignedDecoder) return;
 
     soundManager.playTap();
     const isCorrect = checkAnswer(guessInput);
@@ -60,16 +61,20 @@ export const EmojiDecoderGame: React.FC<EmojiDecoderGameProps> = ({
     if (isCorrect) {
       soundManager.playSuccess();
       const winner = isP1Guesser ? 'p1' : 'p2';
-      onRoundComplete(guessInput, puzzle.answer, true, winner);
+      if (playMode === 'online' && onUpdateOnlineGameState) onUpdateOnlineGameState({ p1Answer: isP1Guesser ? guessInput : puzzle.answer, p2Answer: isP1Guesser ? puzzle.answer : guessInput, complete: true });
+      else onRoundComplete(guessInput, puzzle.answer, true, winner);
     } else {
       soundManager.playBuzz();
       setAttempts((prev) => prev + 1);
+      if (playMode === 'online' && onUpdateOnlineGameState) onUpdateOnlineGameState({ attempts: attempts + 1 });
     }
   };
 
   const handleReveal = () => {
+    if (!isAssignedDecoder) return;
     soundManager.playTap();
-    onRoundComplete(guessInput || 'Skipped', puzzle.answer, false, null);
+    if (playMode === 'online' && onUpdateOnlineGameState) onUpdateOnlineGameState({ p1Answer: isP1Guesser ? (guessInput || 'Skipped') : puzzle.answer, p2Answer: isP1Guesser ? puzzle.answer : (guessInput || 'Skipped'), complete: true });
+    else onRoundComplete(guessInput || 'Skipped', puzzle.answer, false, null);
   };
 
   return (
@@ -128,6 +133,7 @@ export const EmojiDecoderGame: React.FC<EmojiDecoderGameProps> = ({
         <button
           type="button"
           onClick={handleReveal}
+          disabled={!isAssignedDecoder}
           className="py-2.5 px-4 bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
         >
           <Eye className="w-4 h-4" />

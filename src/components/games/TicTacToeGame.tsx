@@ -78,11 +78,13 @@ export const TicTacToeGame: React.FC<TicTacToeGameProps> = ({
       soundManager.playWin();
       const winner = winnerSymbol === 'X' ? 'p1' : 'p2';
       const winnerName = winnerSymbol === 'X' ? player1.name : player2.name;
+      onUpdateOnlineGameState({ board: newBoard, currentTurn: onlineTurn });
       onRoundComplete(`${winnerName} (💖)`, `${winnerName} won the grid!`, false, winner);
       return;
     }
 
     if (isDraw(newBoard)) {
+      onUpdateOnlineGameState({ board: newBoard, currentTurn: onlineTurn });
       onRoundComplete('Draw Game', 'Draw Game', true, null);
       return;
     }

@@ -30,6 +30,22 @@ service cloud.firestore {
         return roomCode.size() == 6;
       }
 
+      function identitiesAreImmutable() {
+        return request.resource.data.roomCode == resource.data.roomCode
+          && request.resource.data.hostUid == resource.data.hostUid
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.player1.id == resource.data.player1.id
+          && request.resource.data.guestUid == resource.data.guestUid
+          && (resource.data.guestUid == null || request.resource.data.player2.id == resource.data.player2.id);
+      }
+
+      function hostOnlyTransitionIsValid() {
+        let selectedGame = request.resource.data.currentGameId != resource.data.currentGameId;
+        let returnedToLobby = request.resource.data.status == 'lobby' && resource.data.status != 'lobby';
+        let rematched = resource.data.status == 'game_over' && request.resource.data.status == 'playing';
+        return !(selectedGame || returnedToLobby || rematched) || isRoomHost();
+      }
+
       // Read rules:
       // 1. A signed-in user can fetch an individual room doc by room code to join.
       // 2. Room listing queries (listing all rooms) are strictly denied.
@@ -52,13 +68,23 @@ service cloud.firestore {
       // 2. A new guest joining an empty guest slot (guestUid == null -> guestUid == request.auth.uid)
       allow update: if isSignedIn() && (
         // Case A: Room Member modifying game
-        (isRoomMember() && request.resource.data.hostUid == resource.data.hostUid)
+        (isRoomMember()
+          && identitiesAreImmutable()
+          && hostOnlyTransitionIsValid()
+          && (isRoomHost() || (
+            request.resource.data.currentRound >= resource.data.currentRound
+            && request.resource.data.currentRound <= resource.data.currentRound + 1
+            && request.resource.data.score1 >= resource.data.score1
+            && request.resource.data.score1 <= resource.data.score1 + 1
+            && request.resource.data.score2 >= resource.data.score2
+            && request.resource.data.score2 <= resource.data.score2 + 1)))
         ||
         // Case B: Joining as guest into empty slot
         (
           resource.data.guestUid == null
           && request.resource.data.guestUid == request.auth.uid
           && request.resource.data.hostUid == resource.data.hostUid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['guestUid', 'player2', 'lastActiveAt'])
           && request.resource.data.player2.name is string
           && request.resource.data.player2.name.size() <= 25
         )
