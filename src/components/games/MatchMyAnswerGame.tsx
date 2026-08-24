@@ -3,6 +3,7 @@ import { Sparkles, Check, Send, HelpCircle, EyeOff } from 'lucide-react';
 import { PlayerInfo, PlayMode, RoomData } from '../../types';
 import { MATCH_MY_ANSWER_QUESTIONS } from '../../data/matchMyAnswerData';
 import { soundManager } from '../../utils/audio';
+import { roundContentIndex } from '../../utils/rounds';
 
 interface MatchMyAnswerGameProps {
   playMode: PlayMode;
@@ -30,7 +31,7 @@ export const MatchMyAnswerGame: React.FC<MatchMyAnswerGameProps> = ({
   onUpdateOnlineGameState,
 }) => {
   // Pick deterministic or shuffled question based on round
-  const questionIndex = (currentRound - 1) % MATCH_MY_ANSWER_QUESTIONS.length;
+  const questionIndex = roundContentIndex(MATCH_MY_ANSWER_QUESTIONS.length, currentRound, onlineRoom?.contentSeed ?? Number(sessionStorage.getItem('pairplay_content_seed') || 1), 'match-my-answer');
   const question = MATCH_MY_ANSWER_QUESTIONS[questionIndex];
 
   // Local mode state
@@ -86,7 +87,7 @@ export const MatchMyAnswerGame: React.FC<MatchMyAnswerGameProps> = ({
     soundManager.playTap();
     const ans = currentInput.trim();
 
-    await onUpdateOnlineGameState({ type: 'answer', value: ans });
+    await onUpdateOnlineGameState({ type: 'answer', value: ans, prompt: question });
   };
 
   return (

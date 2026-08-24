@@ -3,6 +3,7 @@ import { PenTool, EyeOff, Send, Heart, Sparkles, Check } from 'lucide-react';
 import { PlayerInfo, PlayMode, RoomData } from '../../types';
 import { FINISH_SENTENCE_PROMPTS, FinishSentencePrompt } from '../../data/finishSentenceData';
 import { soundManager } from '../../utils/audio';
+import { roundContentIndex } from '../../utils/rounds';
 
 interface FinishSentenceGameProps {
   playMode: PlayMode;
@@ -29,7 +30,7 @@ export const FinishSentenceGame: React.FC<FinishSentenceGameProps> = ({
   onRequestPassDevice,
   onUpdateOnlineGameState,
 }) => {
-  const index = (currentRound - 1) % FINISH_SENTENCE_PROMPTS.length;
+  const index = roundContentIndex(FINISH_SENTENCE_PROMPTS.length, currentRound, onlineRoom?.contentSeed ?? Number(sessionStorage.getItem('pairplay_content_seed') || 1), 'finish-sentence');
   const prompt: FinishSentencePrompt = FINISH_SENTENCE_PROMPTS[index];
 
   // Local state
@@ -71,7 +72,7 @@ export const FinishSentenceGame: React.FC<FinishSentenceGameProps> = ({
     soundManager.playTap();
     const ans = currentInput.trim();
 
-    await onUpdateOnlineGameState({ type: 'answer', value: ans });
+    await onUpdateOnlineGameState({ type: 'answer', value: ans, prompt: prompt.starter });
   };
 
   const activePlayer = localTurn === 'p1' ? player1 : player2;

@@ -3,6 +3,7 @@ import { Smile, Lightbulb, Eye, Send, Check, AlertCircle, HelpCircle } from 'luc
 import { PlayerInfo, PlayMode, RoomData } from '../../types';
 import { EMOJI_DECODER_PUZZLES, EmojiDecoderItem } from '../../data/emojiDecoderData';
 import { soundManager } from '../../utils/audio';
+import { roundContentIndex } from '../../utils/rounds';
 
 interface EmojiDecoderGameProps {
   playMode: PlayMode;
@@ -33,8 +34,12 @@ export const EmojiDecoderGame: React.FC<EmojiDecoderGameProps> = ({
   const guesser = isP1Guesser ? player1 : player2;
   const partner = isP1Guesser ? player2 : player1;
 
-  const puzzleIndex = (currentRound - 1) % EMOJI_DECODER_PUZZLES.length;
-  const puzzle: EmojiDecoderItem = EMOJI_DECODER_PUZZLES[puzzleIndex];
+  const seed = onlineRoom?.contentSeed ?? Number(sessionStorage.getItem('pairplay_content_seed') || 1);
+  const indiaPuzzles = EMOJI_DECODER_PUZZLES.filter(item => item.region === 'india');
+  const globalPuzzles = EMOJI_DECODER_PUZZLES.filter(item => item.region === 'global');
+  const pool = currentRound % 5 === 0 ? globalPuzzles : indiaPuzzles;
+  const puzzleIndex = roundContentIndex(pool.length, currentRound, seed, 'emoji-decoder');
+  const puzzle: EmojiDecoderItem = pool[puzzleIndex];
 
   const [guessInput, setGuessInput] = useState('');
   const [showHint, setShowHint] = useState(false);
@@ -48,7 +53,7 @@ export const EmojiDecoderGame: React.FC<EmojiDecoderGameProps> = ({
     const norm = normalize(input);
     if (!norm) return false;
     if (normalize(puzzle.answer) === norm) return true;
-    return puzzle.acceptedVariations.some((v) => normalize(v) === norm || norm.includes(normalize(v)));
+    return puzzle.acceptedVariations.some((v) => normalize(v) === norm);
   };
 
   const handleGuess = (e: React.FormEvent) => {
@@ -61,19 +66,19 @@ export const EmojiDecoderGame: React.FC<EmojiDecoderGameProps> = ({
     if (isCorrect) {
       soundManager.playSuccess();
       const winner = isP1Guesser ? 'p1' : 'p2';
-      if (playMode === 'online' && onUpdateOnlineGameState) onUpdateOnlineGameState({ type: 'emoji-guess', value: guessInput, expectedAnswer: puzzle.answer });
+      if (playMode === 'online' && onUpdateOnlineGameState) onUpdateOnlineGameState({ type: 'emoji-guess', value: guessInput, puzzleId: puzzle.id });
       else onRoundComplete(guessInput, puzzle.answer, true, winner);
     } else {
       soundManager.playBuzz();
       setAttempts((prev) => prev + 1);
-      if (playMode === 'online' && onUpdateOnlineGameState) onUpdateOnlineGameState({ type: 'emoji-guess', value: guessInput, expectedAnswer: puzzle.answer });
+      if (playMode === 'online' && onUpdateOnlineGameState) onUpdateOnlineGameState({ type: 'emoji-guess', value: guessInput, puzzleId: puzzle.id });
     }
   };
 
   const handleReveal = () => {
     if (!isAssignedDecoder) return;
     soundManager.playTap();
-    if (playMode === 'online' && onUpdateOnlineGameState) onUpdateOnlineGameState({ type: 'emoji-guess', value: guessInput || 'Skipped', expectedAnswer: puzzle.answer, giveUp: true });
+    if (playMode === 'online' && onUpdateOnlineGameState) onUpdateOnlineGameState({ type: 'emoji-guess', value: guessInput || 'Skipped', puzzleId: puzzle.id, giveUp: true });
     else onRoundComplete(guessInput || 'Skipped', puzzle.answer, false, null);
   };
 

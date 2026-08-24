@@ -3,6 +3,7 @@ import { SplitSquareVertical, EyeOff, Check, Heart, ArrowRight } from 'lucide-re
 import { PlayerInfo, PlayMode, RoomData } from '../../types';
 import { THIS_OR_THAT_CHOICES, ThisOrThatChoice } from '../../data/thisOrThatData';
 import { soundManager } from '../../utils/audio';
+import { roundContentIndex } from '../../utils/rounds';
 
 interface ThisOrThatGameProps {
   playMode: PlayMode;
@@ -29,7 +30,7 @@ export const ThisOrThatGame: React.FC<ThisOrThatGameProps> = ({
   onRequestPassDevice,
   onUpdateOnlineGameState,
 }) => {
-  const choiceIndex = (currentRound - 1) % THIS_OR_THAT_CHOICES.length;
+  const choiceIndex = roundContentIndex(THIS_OR_THAT_CHOICES.length, currentRound, onlineRoom?.contentSeed ?? Number(sessionStorage.getItem('pairplay_content_seed') || 1), 'this-or-that');
   const item: ThisOrThatChoice = THIS_OR_THAT_CHOICES[choiceIndex];
 
   // Local state
@@ -63,7 +64,7 @@ export const ThisOrThatGame: React.FC<ThisOrThatGameProps> = ({
 
     soundManager.playSelect();
 
-    await onUpdateOnlineGameState({ type: 'choice', value: selectedOption });
+    await onUpdateOnlineGameState({ type: 'choice', value: selectedOption, prompt: `${item.optionA} or ${item.optionB}` });
   };
 
   const activePlayer = localTurn === 'p1' ? player1 : player2;

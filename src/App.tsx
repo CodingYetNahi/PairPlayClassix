@@ -83,6 +83,7 @@ export default function App() {
   const [score2, setScore2] = useState<number>(0);
   const [isGameOver, setIsGameOver] = useState<boolean>(false);
   const [lastRoundSummary, setLastRoundSummary] = useState<RoundResultSummary | null>(null);
+  const [roundHistory, setRoundHistory] = useState<RoundResultSummary[]>([]);
   const [hasVotedCloseEnough, setHasVotedCloseEnough] = useState<boolean>(false);
 
   // Online Multiplayer state
@@ -147,6 +148,7 @@ export default function App() {
         setScore2(updatedRoom.score2);
         setIsGameOver(updatedRoom.status === 'game_over');
         setLastRoundSummary(updatedRoom.roundResult || null);
+        setRoundHistory(updatedRoom.roundHistory || []);
         setHasVotedCloseEnough(Boolean(currentUid && updatedRoom.closeEnoughVotes?.[currentUid]));
         if (updatedRoom.currentGameId) {
           const matched = GAMES_LIST.find((g) => g.id === updatedRoom.currentGameId);
@@ -237,13 +239,16 @@ export default function App() {
     setScore2(0);
     setIsGameOver(false);
     setLastRoundSummary(null);
+    setRoundHistory([]);
     setHasVotedCloseEnough(false);
 
     if ((playMode === 'online' || (onlineRoom && currentUid)) && onlineRoom?.roomCode) {
       try { await setRoomGameSelection(onlineRoom.roomCode, game.id, rounds, currentUid || undefined); }
       catch { setOnlineWriteError('Could not start the game. Retry.'); return; }
+      return; // The authoritative snapshot supplies the new roundVersion before gameplay is enabled.
     }
 
+    sessionStorage.setItem('pairplay_content_seed', String(Date.now() ^ Math.floor(Math.random() * 0x7fffffff)));
     setCurrentScreen('game_play');
   };
 
@@ -304,6 +309,7 @@ export default function App() {
       roundWinner,
     };
     setLastRoundSummary(summary);
+    setRoundHistory((history) => history.some(item => item.round === summary.round) ? history : [...history, summary]);
     setHasVotedCloseEnough(false);
 
     setCurrentScreen('round_result');
@@ -605,6 +611,7 @@ export default function App() {
               isHost={Boolean(isHost)}
               playMode={playMode}
               nextRoundAt={onlineRoom?.nextRoundAt}
+              roundHistory={roundHistory}
             />
           )}
         </main>

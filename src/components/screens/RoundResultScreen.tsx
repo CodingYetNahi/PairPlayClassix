@@ -32,6 +32,7 @@ interface RoundResultScreenProps {
   isHost: boolean;
   playMode: PlayMode;
   nextRoundAt?: number | null;
+  roundHistory: RoundResultSummary[];
 }
 
 export const RoundResultScreen: React.FC<RoundResultScreenProps> = ({
@@ -52,8 +53,9 @@ export const RoundResultScreen: React.FC<RoundResultScreenProps> = ({
   isHost,
   playMode,
   nextRoundAt,
+  roundHistory,
 }) => {
-  const [countdown, setCountdown] = useState(4);
+  const [countdown, setCountdown] = useState(10);
   useEffect(() => {
     if (playMode !== 'online' || !nextRoundAt) return;
     const update = () => setCountdown(Math.max(0, Math.ceil((nextRoundAt - Date.now()) / 1000)));
@@ -85,6 +87,20 @@ export const RoundResultScreen: React.FC<RoundResultScreenProps> = ({
         <Sparkles className="w-3.5 h-3.5 text-pink-500" />
         <span>{isGameOver ? 'Session Complete!' : `Round ${currentRound} of ${totalRounds} Results`}</span>
       </div>
+
+      {isGameOver && roundHistory.length > 0 && (
+        <section className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4 text-left space-y-3">
+          <h2 className="font-black text-base text-neutral-900 dark:text-white">All Round Answers</h2>
+          {[...roundHistory].sort((a, b) => a.round - b.round).map(item => (
+            <div key={item.round} className="border-t border-neutral-100 dark:border-neutral-800 pt-2 text-xs space-y-1">
+              <div className="font-bold">Round {item.round}{item.prompt ? ` — ${item.prompt}` : ''}</div>
+              <div>{player1.name}: {String(item.player1Answer ?? '—')} · {player2.name}: {String(item.player2Answer ?? '—')}</div>
+              {item.attemptHistory?.map(attempt => <div key={attempt.attempt} className="text-neutral-500">Attempt {attempt.attempt}: {attempt.player1Word} · {attempt.player2Word}</div>)}
+              {item.note && <div className="text-neutral-500">{item.note}</div>}
+            </div>
+          ))}
+        </section>
+      )}
 
       <h1 className="text-3xl sm:text-4xl font-black font-display text-neutral-900 dark:text-white leading-tight">
         {isGameOver ? (

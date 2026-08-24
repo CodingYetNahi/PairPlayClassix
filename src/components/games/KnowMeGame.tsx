@@ -3,6 +3,7 @@ import { HeartHandshake, EyeOff, Send, HelpCircle, UserCheck } from 'lucide-reac
 import { PlayerInfo, PlayMode, RoomData } from '../../types';
 import { KNOW_ME_QUESTIONS, KnowMeQuestion } from '../../data/knowMeData';
 import { soundManager } from '../../utils/audio';
+import { roundContentIndex } from '../../utils/rounds';
 
 interface KnowMeGameProps {
   playMode: PlayMode;
@@ -34,7 +35,7 @@ export const KnowMeGame: React.FC<KnowMeGameProps> = ({
   const answerer = isP1Answerer ? player1 : player2;
   const guesser = isP1Answerer ? player2 : player1;
 
-  const questionIndex = (currentRound - 1) % KNOW_ME_QUESTIONS.length;
+  const questionIndex = roundContentIndex(KNOW_ME_QUESTIONS.length, currentRound, onlineRoom?.contentSeed ?? Number(sessionStorage.getItem('pairplay_content_seed') || 1), 'know-me');
   const question: KnowMeQuestion = KNOW_ME_QUESTIONS[questionIndex];
 
   // Local state
@@ -97,7 +98,7 @@ export const KnowMeGame: React.FC<KnowMeGameProps> = ({
     soundManager.playTap();
     const val = currentInput.trim();
 
-    await onUpdateOnlineGameState({ type: 'answer', value: val });
+    await onUpdateOnlineGameState({ type: 'answer', value: val, prompt: question.prompt });
   };
 
   return (

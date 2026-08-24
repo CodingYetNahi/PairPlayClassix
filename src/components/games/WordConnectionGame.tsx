@@ -3,6 +3,7 @@ import { Network, EyeOff, Send, Sparkles, Check, Flame, HelpCircle } from 'lucid
 import { PlayerInfo, PlayMode, RoomData } from '../../types';
 import { WORD_CONNECTION_STARTERS, WordConnectionItem } from '../../data/wordConnectionData';
 import { soundManager } from '../../utils/audio';
+import { roundContentIndex } from '../../utils/rounds';
 
 interface WordConnectionGameProps {
   playMode: PlayMode;
@@ -14,7 +15,7 @@ interface WordConnectionGameProps {
   onlineRoom: RoomData | null;
   onRoundComplete: (p1Answer: string, p2Answer: string, isMatch: boolean, roundWinner?: 'p1' | 'p2' | null) => void;
   onRequestPassDevice: (nextPlayer: PlayerInfo, promptText: string, onReady: () => void) => void;
-  onUpdateOnlineGameState?: (state: any) => void;
+  onUpdateOnlineGameState?: (state: any) => Promise<void>;
 }
 
 export const WordConnectionGame: React.FC<WordConnectionGameProps> = ({
@@ -29,7 +30,7 @@ export const WordConnectionGame: React.FC<WordConnectionGameProps> = ({
   onRequestPassDevice,
   onUpdateOnlineGameState,
 }) => {
-  const seedIndex = (currentRound - 1) % WORD_CONNECTION_STARTERS.length;
+  const seedIndex = roundContentIndex(WORD_CONNECTION_STARTERS.length, currentRound, onlineRoom?.contentSeed ?? Number(sessionStorage.getItem('pairplay_content_seed') || 1), 'word-connection');
   const initialSeed = WORD_CONNECTION_STARTERS[seedIndex].starterWord;
 
   const [attempts, setAttempts] = useState<number>(1);
@@ -88,11 +89,12 @@ export const WordConnectionGame: React.FC<WordConnectionGameProps> = ({
     soundManager.playTap();
     const word = currentInput.trim();
 
-    await onUpdateOnlineGameState({ type: 'answer', value: word });
+    await onUpdateOnlineGameState({ type: 'word-answer', value: word, expectedAttempt: currentAttemptNum, prompt: activeClues.join(' + ') });
+    setCurrentInput('');
   };
 
   const activeClues = playMode === 'online' && onlineRoom?.gameState?.clues ? onlineRoom.gameState.clues : clues;
-  const currentAttemptNum = playMode === 'online' && onlineRoom?.gameState?.attempts ? onlineRoom.gameState.attempts : attempts;
+  const currentAttemptNum = playMode === 'online' ? Number(onlineRoom?.gameState?.attempt || 1) : attempts;
 
   return (
     <div className="w-full max-w-xl mx-auto px-4 py-6 space-y-6 animate-fadeIn">
