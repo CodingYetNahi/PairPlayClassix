@@ -34,6 +34,19 @@ export interface GameMeta {
 
 export type PlayMode = 'local' | 'online';
 
+export type OnlineGameAction =
+  | { type: 'answer'; value: string }
+  | { type: 'choice'; value: string }
+  | { type: 'tic-tac-toe-move'; index: number }
+  | { type: 'emoji-guess'; value: string; expectedAnswer: string; giveUp?: boolean }
+  | { type: 'truths-author'; statements: string[]; lieIndex: number }
+  | { type: 'truths-guess'; index: number }
+  | { type: 'truth-dare-select'; card: unknown }
+  | { type: 'truth-dare-complete'; skipped: boolean }
+  | { type: 'memory-init'; deck: unknown[] }
+  | { type: 'memory-flip'; index: number }
+  | { type: 'memory-resolve' };
+
 export interface PlayerInfo {
   id: string; // 'p1' | 'p2' or firebase uid
   name: string;

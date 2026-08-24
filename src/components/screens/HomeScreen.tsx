@@ -15,10 +15,12 @@ import {
 } from 'lucide-react';
 import { Logo } from '../common/Logo';
 import { GAMES_LIST } from '../../data/gamesList';
-import { GameMeta } from '../../types';
+import { GameMeta, PlayMode } from '../../types';
 import { BRANDING } from '../../config/branding';
 
 interface HomeScreenProps {
+  playMode: PlayMode;
+  onModeChange: (mode: PlayMode) => void;
   onSelectOneDevice: () => void;
   onCreateOnlineRoom: () => void;
   onJoinOnlineRoom: () => void;
@@ -27,6 +29,8 @@ interface HomeScreenProps {
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
+  playMode,
+  onModeChange,
   onSelectOneDevice,
   onCreateOnlineRoom,
   onJoinOnlineRoom,
@@ -57,10 +61,15 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </p>
       </div>
 
+      <div role="tablist" aria-label="Play mode" className="mx-auto flex max-w-md rounded-2xl bg-neutral-100 dark:bg-neutral-800 p-1">
+        <button role="tab" aria-selected={playMode === 'local'} onClick={() => onModeChange('local')} className={`flex-1 rounded-xl px-3 py-2 text-sm font-bold ${playMode === 'local' ? 'bg-white dark:bg-neutral-900 text-pink-600 shadow-sm' : 'text-neutral-500'}`}>One Device</button>
+        <button role="tab" aria-selected={playMode === 'online'} onClick={() => onModeChange('online')} className={`flex-1 rounded-xl px-3 py-2 text-sm font-bold ${playMode === 'online' ? 'bg-white dark:bg-neutral-900 text-purple-600 shadow-sm' : 'text-neutral-500'}`}>Online — Two Devices</button>
+      </div>
+
       {/* Main Play Mode Action Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 gap-4 sm:gap-6">
         {/* Play on One Device Card */}
-        <div
+        {playMode === 'local' && <div
           onClick={onSelectOneDevice}
           className="group relative bg-gradient-to-br from-white to-pink-50/40 dark:from-neutral-900 dark:to-pink-950/20 border-2 border-pink-200/80 dark:border-pink-900/40 hover:border-pink-400 dark:hover:border-pink-500 rounded-3xl p-6 sm:p-8 shadow-sm hover:shadow-xl transition-all duration-300 cursor-pointer flex flex-col justify-between"
         >
@@ -92,10 +101,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               <ChevronRight className="w-4 h-4" />
             </span>
           </div>
-        </div>
+        </div>}
 
         {/* Play Online Card */}
-        <div className="bg-gradient-to-br from-white to-purple-50/40 dark:from-neutral-900 dark:to-purple-950/20 border-2 border-purple-200/80 dark:border-purple-900/40 rounded-3xl p-6 sm:p-8 shadow-sm flex flex-col justify-between">
+        {playMode === 'online' && <div className="bg-gradient-to-br from-white to-purple-50/40 dark:from-neutral-900 dark:to-purple-950/20 border-2 border-purple-200/80 dark:border-purple-900/40 rounded-3xl p-6 sm:p-8 shadow-sm flex flex-col justify-between">
           <div className="space-y-4">
             <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-600 text-white flex items-center justify-center shadow-md">
               <Wifi className="w-7 h-7" />
@@ -132,7 +141,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               <span>Join with Code</span>
             </button>
           </div>
-        </div>
+        </div>}
       </div>
 
       {/* Quick Help Banner */}

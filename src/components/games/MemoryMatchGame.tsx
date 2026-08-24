@@ -54,9 +54,32 @@ export const MemoryMatchGame: React.FC<MemoryMatchGameProps> = ({
   const [p1Matches, setP1Matches] = useState(0);
   const [p2Matches, setP2Matches] = useState(0);
 
+  const onlineState = onlineRoom?.gameState;
+  const onlineCards = (onlineState?.deck || []) as Card[];
+  const onlineTurn = (onlineState?.currentTurn || 'p1') as 'p1' | 'p2';
+  const onlineScores = onlineState?.pairScores || { p1: 0, p2: 0 };
+  const amP1 = currentUid === onlineRoom?.hostUid;
+  const isMyOnlineTurn = (amP1 ? 'p1' : 'p2') === onlineTurn;
+
+  useEffect(() => {
+    if (playMode === 'online' && onlineRoom?.hostUid === currentUid && !onlineState?.deck && onUpdateOnlineGameState) {
+      onUpdateOnlineGameState({ type: 'memory-init', deck: generateDeck() });
+    }
+  }, [playMode, currentUid, onlineRoom?.hostUid, onlineState?.deck, onUpdateOnlineGameState]);
+
+  useEffect(() => {
+    if (playMode !== 'online' || !onlineState?.resolveAt || !onUpdateOnlineGameState) return;
+    const timer = window.setTimeout(() => onUpdateOnlineGameState({ type: 'memory-resolve' }), Math.max(0, onlineState.resolveAt - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [playMode, onlineState?.resolveAt, onUpdateOnlineGameState]);
+
   const activePlayer = currentTurn === 'p1' ? player1 : player2;
 
   const handleCardClick = (index: number) => {
+    if (playMode === 'online') {
+      if (isMyOnlineTurn && onUpdateOnlineGameState) onUpdateOnlineGameState({ type: 'memory-flip', index });
+      return;
+    }
     if (isProcessing || cards[index].isFlipped || cards[index].isMatched) return;
 
     soundManager.playSelect();
@@ -120,6 +143,12 @@ export const MemoryMatchGame: React.FC<MemoryMatchGameProps> = ({
     }
   };
 
+  const renderedCards = playMode === 'online' ? onlineCards : cards;
+  const renderedTurn = playMode === 'online' ? onlineTurn : currentTurn;
+  const renderedP1Matches = playMode === 'online' ? onlineScores.p1 : p1Matches;
+  const renderedP2Matches = playMode === 'online' ? onlineScores.p2 : p2Matches;
+  const renderedActivePlayer = renderedTurn === 'p1' ? player1 : player2;
+
   return (
     <div className="w-full max-w-xl mx-auto px-4 py-6 space-y-6 animate-fadeIn text-center">
       {/* Header */}
@@ -135,33 +164,33 @@ export const MemoryMatchGame: React.FC<MemoryMatchGameProps> = ({
 
       {/* Score and Turn Tracker */}
       <div className="p-4 rounded-3xl bg-white dark:bg-neutral-900 border border-teal-100 dark:border-neutral-800 shadow-xs flex items-center justify-around">
-        <div className={`text-center space-y-0.5 ${currentTurn === 'p1' ? 'font-bold text-teal-600' : 'text-neutral-400'}`}>
+        <div className={`text-center space-y-0.5 ${renderedTurn === 'p1' ? 'font-bold text-teal-600' : 'text-neutral-400'}`}>
           <div className="text-xl">{player1.avatar}</div>
           <div className="text-xs truncate max-w-[90px]">{player1.name}</div>
-          <div className="text-lg font-black">{p1Matches} Pairs</div>
+          <div className="text-lg font-black">{renderedP1Matches} Pairs</div>
         </div>
 
         <div className="text-xs font-bold text-neutral-400">
-          Turn: <span className="text-teal-600 dark:text-teal-400 font-extrabold">{activePlayer.name}</span>
+          Turn: <span className="text-teal-600 dark:text-teal-400 font-extrabold">{renderedActivePlayer.name}</span>
         </div>
 
-        <div className={`text-center space-y-0.5 ${currentTurn === 'p2' ? 'font-bold text-purple-600' : 'text-neutral-400'}`}>
+        <div className={`text-center space-y-0.5 ${renderedTurn === 'p2' ? 'font-bold text-purple-600' : 'text-neutral-400'}`}>
           <div className="text-xl">{player2.avatar}</div>
           <div className="text-xs truncate max-w-[90px]">{player2.name}</div>
-          <div className="text-lg font-black">{p2Matches} Pairs</div>
+          <div className="text-lg font-black">{renderedP2Matches} Pairs</div>
         </div>
       </div>
 
       {/* 4x4 Cards Grid */}
       <div className="grid grid-cols-4 gap-2.5 sm:gap-3 p-4 bg-gradient-to-br from-teal-50/50 to-pink-50/50 dark:from-neutral-900 dark:to-neutral-900 border-2 border-teal-200 dark:border-neutral-800 rounded-3xl shadow-md">
-        {cards.map((card, idx) => {
+        {renderedCards.map((card, idx) => {
           const isRevealed = card.isFlipped || card.isMatched;
           return (
             <button
               key={card.id}
               type="button"
               onClick={() => handleCardClick(idx)}
-              disabled={isRevealed || isProcessing}
+              disabled={isRevealed || isProcessing || (playMode === 'online' && (!isMyOnlineTurn || Boolean(onlineState?.resolveAt)))}
               className={`h-16 sm:h-20 rounded-2xl font-black text-2xl sm:text-3xl flex items-center justify-center transition-all duration-300 cursor-pointer select-none active:scale-95 ${
                 card.isMatched
                   ? 'bg-emerald-100 dark:bg-emerald-950/60 border-2 border-emerald-400 text-emerald-600 opacity-80'

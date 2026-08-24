@@ -64,28 +64,14 @@ export const FinishSentenceGame: React.FC<FinishSentenceGameProps> = ({
     }
   };
 
-  const handleOnlineSubmit = (e: React.FormEvent) => {
+  const handleOnlineSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentInput.trim() || !onUpdateOnlineGameState) return;
 
     soundManager.playTap();
     const ans = currentInput.trim();
 
-    if (isOnlineP1) {
-      const newGameState = { ...onlineRoom?.gameState, p1Answer: ans };
-      if (onlineP2Answer) {
-        onRoundComplete(ans, onlineP2Answer, false);
-      } else {
-        onUpdateOnlineGameState(newGameState);
-      }
-    } else {
-      const newGameState = { ...onlineRoom?.gameState, p2Answer: ans };
-      if (onlineP1Answer) {
-        onRoundComplete(onlineP1Answer, ans, false);
-      } else {
-        onUpdateOnlineGameState(newGameState);
-      }
-    }
+    await onUpdateOnlineGameState({ type: 'answer', value: ans });
   };
 
   const activePlayer = localTurn === 'p1' ? player1 : player2;

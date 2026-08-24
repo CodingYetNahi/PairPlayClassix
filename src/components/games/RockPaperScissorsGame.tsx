@@ -72,34 +72,12 @@ export const RockPaperScissorsGame: React.FC<RockPaperScissorsGameProps> = ({
     }
   };
 
-  const handlePickOnline = (choice: RPSChoice) => {
+  const handlePickOnline = async (choice: RPSChoice) => {
     if (!onUpdateOnlineGameState || myOnlinePick) return;
 
     soundManager.playTap();
 
-    if (isOnlineP1) {
-      const newGameState = { ...onlineRoom?.gameState, p1Answer: choice };
-      if (onlineP2Pick) {
-        const winner = determineWinner(choice, onlineP2Pick);
-        const isTie = winner === null;
-        const p1Str = `${RPS_OPTIONS.find((o) => o.id === choice)?.icon} ${choice.toUpperCase()}`;
-        const p2Str = `${RPS_OPTIONS.find((o) => o.id === onlineP2Pick)?.icon} ${onlineP2Pick.toUpperCase()}`;
-        onRoundComplete(p1Str, p2Str, isTie, winner);
-      } else {
-        onUpdateOnlineGameState(newGameState);
-      }
-    } else {
-      const newGameState = { ...onlineRoom?.gameState, p2Answer: choice };
-      if (onlineP1Pick) {
-        const winner = determineWinner(onlineP1Pick, choice);
-        const isTie = winner === null;
-        const p1Str = `${RPS_OPTIONS.find((o) => o.id === onlineP1Pick)?.icon} ${onlineP1Pick.toUpperCase()}`;
-        const p2Str = `${RPS_OPTIONS.find((o) => o.id === choice)?.icon} ${choice.toUpperCase()}`;
-        onRoundComplete(p1Str, p2Str, isTie, winner);
-      } else {
-        onUpdateOnlineGameState(newGameState);
-      }
-    }
+    await onUpdateOnlineGameState({ type: 'choice', value: choice });
   };
 
   const activePlayer = localTurn === 'p1' ? player1 : player2;

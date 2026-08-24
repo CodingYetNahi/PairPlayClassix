@@ -56,28 +56,12 @@ export const WouldYouRatherGame: React.FC<WouldYouRatherGameProps> = ({
     }
   };
 
-  const handleSelectOnline = (selectedOption: string) => {
+  const handleSelectOnline = async (selectedOption: string) => {
     if (!onUpdateOnlineGameState || myOnlineChoice) return;
 
     soundManager.playSelect();
 
-    if (isOnlineP1) {
-      const newGameState = { ...onlineRoom?.gameState, p1Answer: selectedOption };
-      if (onlineP2Choice) {
-        const isMatch = selectedOption === onlineP2Choice;
-        onRoundComplete(selectedOption, onlineP2Choice, isMatch);
-      } else {
-        onUpdateOnlineGameState(newGameState);
-      }
-    } else {
-      const newGameState = { ...onlineRoom?.gameState, p2Answer: selectedOption };
-      if (onlineP1Choice) {
-        const isMatch = onlineP1Choice === selectedOption;
-        onRoundComplete(onlineP1Choice, selectedOption, isMatch);
-      } else {
-        onUpdateOnlineGameState(newGameState);
-      }
-    }
+    await onUpdateOnlineGameState({ type: 'choice', value: selectedOption });
   };
 
   const activePlayer = localTurn === 'p1' ? player1 : player2;

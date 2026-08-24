@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Wifi,
   Copy,
@@ -25,6 +25,8 @@ interface OnlineRoomModalProps {
   onClose: () => void;
   onRoomReady: (room: RoomData, currentUid: string) => void;
   onFirebaseMissing: () => void;
+  initialTab?: 'create' | 'join';
+  initialRoomCode?: string;
 }
 
 const AVATAR_OPTIONS = ['💖', '🎮', '🐱', '🐶', '🍕', '☕', '🍓', '🚀', '🌟', '🥑', '🏖️', '✨'];
@@ -34,8 +36,10 @@ export const OnlineRoomModal: React.FC<OnlineRoomModalProps> = ({
   onClose,
   onRoomReady,
   onFirebaseMissing,
+  initialTab = 'create',
+  initialRoomCode = '',
 }) => {
-  const [activeTab, setActiveTab] = useState<'create' | 'join'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'join'>(initialTab);
   const [nickname, setNickname] = useState(() => {
     try {
       return localStorage.getItem('pairplay_online_name') || '';
@@ -44,7 +48,7 @@ export const OnlineRoomModal: React.FC<OnlineRoomModalProps> = ({
     }
   });
   const [avatar, setAvatar] = useState('💖');
-  const [roomCodeInput, setRoomCodeInput] = useState('');
+  const [roomCodeInput, setRoomCodeInput] = useState(initialRoomCode);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -53,6 +57,22 @@ export const OnlineRoomModal: React.FC<OnlineRoomModalProps> = ({
   const [createdRoomCode, setCreatedRoomCode] = useState<string | null>(null);
   const [roomData, setRoomData] = useState<RoomData | null>(null);
   const [currentUid, setCurrentUid] = useState<string | null>(null);
+  const temporarySubscription = useRef<null | (() => void)>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab(initialTab);
+      setRoomCodeInput(initialRoomCode);
+    }
+  }, [isOpen, initialTab, initialRoomCode]);
+
+  useEffect(() => () => temporarySubscription.current?.(), []);
+
+  const handleClose = () => {
+    temporarySubscription.current?.();
+    temporarySubscription.current = null;
+    onClose();
+  };
 
   if (!isOpen) return null;
 
@@ -82,7 +102,8 @@ export const OnlineRoomModal: React.FC<OnlineRoomModalProps> = ({
       soundManager.playSuccess();
 
       // Subscribe to room updates
-      subscribeToRoom(room.roomCode, (updated) => {
+      temporarySubscription.current?.();
+      temporarySubscription.current = subscribeToRoom(room.roomCode, (updated) => {
         if (updated) {
           setRoomData(updated);
           if (updated.player2) {
@@ -158,6 +179,8 @@ export const OnlineRoomModal: React.FC<OnlineRoomModalProps> = ({
 
   const handleProceedToGames = () => {
     if (roomData && currentUid) {
+      temporarySubscription.current?.();
+      temporarySubscription.current = null;
       soundManager.playSelect();
       onRoomReady(roomData, currentUid);
     }
@@ -167,7 +190,7 @@ export const OnlineRoomModal: React.FC<OnlineRoomModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
       <div className="max-w-lg w-full bg-white dark:bg-neutral-900 border border-pink-100 dark:border-neutral-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto">
         <button
-          onClick={onClose}
+          onClick={handleClose}
           className="absolute top-5 right-5 p-2 rounded-full text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
           aria-label="Close modal"
         >

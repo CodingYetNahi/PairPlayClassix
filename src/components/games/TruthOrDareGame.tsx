@@ -64,7 +64,7 @@ export const TruthOrDareGame: React.FC<TruthOrDareGameProps> = ({
     const pool = filtered.length > 0 ? filtered : TRUTH_OR_DARE_CARDS.filter((i) => i.type === type);
     const randomPick = pool[Math.floor(Math.random() * pool.length)];
     setCurrentItem(randomPick);
-    if (playMode === 'online' && onUpdateOnlineGameState) onUpdateOnlineGameState({ selectedCard: randomPick });
+    if (playMode === 'online' && onUpdateOnlineGameState) onUpdateOnlineGameState({ type: 'truth-dare-select', card: randomPick });
   };
 
   const handleComplete = (completed: boolean) => {
@@ -76,7 +76,7 @@ export const TruthOrDareGame: React.FC<TruthOrDareGameProps> = ({
       : `Skipped ${currentItem.type.toUpperCase()}: "${currentItem.prompt}" (No penalty)`;
 
     if (playMode === 'online' && onUpdateOnlineGameState) {
-      onUpdateOnlineGameState({ p1Answer: isP1Turn ? summaryText : 'Cheered partner on!', p2Answer: isP1Turn ? 'Cheered partner on!' : summaryText, complete: true });
+      onUpdateOnlineGameState({ type: 'truth-dare-complete', skipped: !completed });
       return;
     }
     onRoundComplete(
