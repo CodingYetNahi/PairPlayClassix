@@ -79,32 +79,14 @@ export const MatchMyAnswerGame: React.FC<MatchMyAnswerGameProps> = ({
     }
   };
 
-  const handleOnlineSubmit = (e: React.FormEvent) => {
+  const handleOnlineSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentInput.trim() || !onUpdateOnlineGameState) return;
 
     soundManager.playTap();
     const ans = currentInput.trim();
 
-    if (isOnlineP1) {
-      const newGameState = { ...onlineRoom?.gameState, p1Answer: ans };
-      if (onlineP2Answer) {
-        // Both submitted!
-        const matched = checkMatch(ans, onlineP2Answer);
-        onRoundComplete(ans, onlineP2Answer, matched);
-      } else {
-        onUpdateOnlineGameState(newGameState);
-      }
-    } else {
-      const newGameState = { ...onlineRoom?.gameState, p2Answer: ans };
-      if (onlineP1Answer) {
-        // Both submitted!
-        const matched = checkMatch(onlineP1Answer, ans);
-        onRoundComplete(onlineP1Answer, ans, matched);
-      } else {
-        onUpdateOnlineGameState(newGameState);
-      }
-    }
+    await onUpdateOnlineGameState({ type: 'answer', value: ans });
   };
 
   return (

@@ -61,19 +61,19 @@ export const EmojiDecoderGame: React.FC<EmojiDecoderGameProps> = ({
     if (isCorrect) {
       soundManager.playSuccess();
       const winner = isP1Guesser ? 'p1' : 'p2';
-      if (playMode === 'online' && onUpdateOnlineGameState) onUpdateOnlineGameState({ p1Answer: isP1Guesser ? guessInput : puzzle.answer, p2Answer: isP1Guesser ? puzzle.answer : guessInput, complete: true });
+      if (playMode === 'online' && onUpdateOnlineGameState) onUpdateOnlineGameState({ type: 'emoji-guess', value: guessInput, expectedAnswer: puzzle.answer });
       else onRoundComplete(guessInput, puzzle.answer, true, winner);
     } else {
       soundManager.playBuzz();
       setAttempts((prev) => prev + 1);
-      if (playMode === 'online' && onUpdateOnlineGameState) onUpdateOnlineGameState({ attempts: attempts + 1 });
+      if (playMode === 'online' && onUpdateOnlineGameState) onUpdateOnlineGameState({ type: 'emoji-guess', value: guessInput, expectedAnswer: puzzle.answer });
     }
   };
 
   const handleReveal = () => {
     if (!isAssignedDecoder) return;
     soundManager.playTap();
-    if (playMode === 'online' && onUpdateOnlineGameState) onUpdateOnlineGameState({ p1Answer: isP1Guesser ? (guessInput || 'Skipped') : puzzle.answer, p2Answer: isP1Guesser ? puzzle.answer : (guessInput || 'Skipped'), complete: true });
+    if (playMode === 'online' && onUpdateOnlineGameState) onUpdateOnlineGameState({ type: 'emoji-guess', value: guessInput || 'Skipped', expectedAnswer: puzzle.answer, giveUp: true });
     else onRoundComplete(guessInput || 'Skipped', puzzle.answer, false, null);
   };
 

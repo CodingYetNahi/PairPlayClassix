@@ -90,42 +90,14 @@ export const KnowMeGame: React.FC<KnowMeGameProps> = ({
     }
   };
 
-  const handleOnlineSubmit = (e: React.FormEvent) => {
+  const handleOnlineSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentInput.trim() || !onUpdateOnlineGameState) return;
 
     soundManager.playTap();
     const val = currentInput.trim();
 
-    if (isMeAnswerer) {
-      const newGameState = isP1Answerer
-        ? { ...onlineRoom?.gameState, p1Answer: val }
-        : { ...onlineRoom?.gameState, p2Answer: val };
-
-      if (onlineGuesserVal) {
-        const isCorrect = checkMatch(val, onlineGuesserVal);
-        const winner = isCorrect ? (isP1Answerer ? 'p2' : 'p1') : null;
-        const p1Ans = isP1Answerer ? val : onlineGuesserVal;
-        const p2Ans = isP1Answerer ? onlineGuesserVal : val;
-        onRoundComplete(p1Ans, p2Ans, isCorrect, winner);
-      } else {
-        onUpdateOnlineGameState(newGameState);
-      }
-    } else {
-      const newGameState = isP1Answerer
-        ? { ...onlineRoom?.gameState, p2Answer: val }
-        : { ...onlineRoom?.gameState, p1Answer: val };
-
-      if (onlineAnswererVal) {
-        const isCorrect = checkMatch(onlineAnswererVal, val);
-        const winner = isCorrect ? (isP1Answerer ? 'p2' : 'p1') : null;
-        const p1Ans = isP1Answerer ? onlineAnswererVal : val;
-        const p2Ans = isP1Answerer ? val : onlineAnswererVal;
-        onRoundComplete(p1Ans, p2Ans, isCorrect, winner);
-      } else {
-        onUpdateOnlineGameState(newGameState);
-      }
-    }
+    await onUpdateOnlineGameState({ type: 'answer', value: val });
   };
 
   return (

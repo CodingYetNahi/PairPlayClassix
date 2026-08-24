@@ -29,7 +29,7 @@ import { MemoryMatchGame } from './components/games/MemoryMatchGame';
 import { WordConnectionGame } from './components/games/WordConnectionGame';
 
 // Types & Services
-import { GameMeta, PlayerInfo, PlayMode, RoomData, RoundResultSummary } from './types';
+import { GameMeta, OnlineGameAction, PlayerInfo, PlayMode, RoomData, RoundResultSummary } from './types';
 import { GAMES_LIST } from './data/gamesList';
 import { isFirebaseConfigured } from './services/firebase';
 import {
@@ -98,6 +98,8 @@ export default function App() {
 
   const [isLocalSetupOpen, setIsLocalSetupOpen] = useState<boolean>(false);
   const [isOnlineModalOpen, setIsOnlineModalOpen] = useState<boolean>(false);
+  const [onlineModalTab, setOnlineModalTab] = useState<'create' | 'join'>('create');
+  const [initialRoomCode, setInitialRoomCode] = useState('');
   const [isRulesModalOpen, setIsRulesModalOpen] = useState<boolean>(false);
   const [rulesGame, setRulesGame] = useState<GameMeta | null>(null);
   const [isHowToPlayOpen, setIsHowToPlayOpen] = useState<boolean>(false);
@@ -120,6 +122,9 @@ export default function App() {
     if (hash.startsWith('#join=')) {
       const code = hash.replace('#join=', '').trim().toUpperCase();
       if (code.length === 6) {
+        setPlayMode('online');
+        setOnlineModalTab('join');
+        setInitialRoomCode(code);
         setIsOnlineModalOpen(true);
       }
     }
@@ -181,6 +186,7 @@ export default function App() {
       leaveRoomInFirestore(onlineRoom.roomCode, currentUid);
     }
     setOnlineRoom(null);
+    setCurrentUid(null);
     setActiveGame(null);
     setCurrentScreen('home');
   };
@@ -188,6 +194,8 @@ export default function App() {
   const handleStartOneDeviceFlow = () => {
     soundManager.playSelect();
     setPlayMode('local');
+    setOnlineRoom(null);
+    setCurrentUid(null);
     setIsLocalSetupOpen(true);
   };
 
@@ -198,16 +206,19 @@ export default function App() {
     setCurrentScreen('game_select');
   };
 
-  const handleOpenOnlineModal = () => {
+  const handleOpenOnlineModal = (tab: 'create' | 'join') => {
     if (!isFirebaseConfigured()) {
       setIsFirebaseConfigOpen(true);
       return;
     }
     setPlayMode('online');
+    setOnlineModalTab(tab);
+    setInitialRoomCode('');
     setIsOnlineModalOpen(true);
   };
 
   const handleRoomReady = (room: RoomData, uid: string) => {
+    setPlayMode('online');
     setOnlineRoom(room);
     setCurrentUid(uid);
     setPlayer1(room.player1);
@@ -228,7 +239,7 @@ export default function App() {
     setLastRoundSummary(null);
     setHasVotedCloseEnough(false);
 
-    if (playMode === 'online' && onlineRoom?.roomCode) {
+    if ((playMode === 'online' || (onlineRoom && currentUid)) && onlineRoom?.roomCode) {
       try { await setRoomGameSelection(onlineRoom.roomCode, game.id, rounds, currentUid || undefined); }
       catch { setOnlineWriteError('Could not start the game. Retry.'); return; }
     }
@@ -337,11 +348,11 @@ export default function App() {
     setCurrentScreen('game_select');
   };
 
-  const updateOnlineState = (state: Record<string, any>) => {
-    if (!onlineRoom || !currentUid || !activeGame) return;
+  const updateOnlineState = async (action: OnlineGameAction): Promise<void> => {
+    if (!onlineRoom || !currentUid || !activeGame) throw new Error('Online room is unavailable.');
     setOnlineWriteError(null);
-    submitRoomAction(onlineRoom.roomCode, currentUid, activeGame.id, currentRound, state)
-      .catch(() => setOnlineWriteError('Your action was not saved. Please retry.'));
+    try { await submitRoomAction(onlineRoom.roomCode, currentUid, activeGame.id, currentRound, onlineRoom.roundVersion || 0, action); }
+    catch (error) { setOnlineWriteError('Your action was not saved. Please retry.'); throw error; }
   };
 
   const isHost = playMode === 'local' || (onlineRoom && currentUid === onlineRoom.hostUid);
@@ -370,8 +381,10 @@ export default function App() {
           {currentScreen === 'home' && (
             <HomeScreen
               onSelectOneDevice={handleStartOneDeviceFlow}
-              onCreateOnlineRoom={handleOpenOnlineModal}
-              onJoinOnlineRoom={handleOpenOnlineModal}
+              playMode={playMode}
+              onModeChange={setPlayMode}
+              onCreateOnlineRoom={() => handleOpenOnlineModal('create')}
+              onJoinOnlineRoom={() => handleOpenOnlineModal('join')}
               onOpenHowToPlay={() => setIsHowToPlayOpen(true)}
               onSelectGamePreview={(game) => handleOpenGameRules(game)}
             />
@@ -613,6 +626,8 @@ export default function App() {
 
         <OnlineRoomModal
           isOpen={isOnlineModalOpen}
+          initialTab={onlineModalTab}
+          initialRoomCode={initialRoomCode}
           onClose={() => setIsOnlineModalOpen(false)}
           onRoomReady={handleRoomReady}
           onFirebaseMissing={() => {

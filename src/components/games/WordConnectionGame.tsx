@@ -81,50 +81,14 @@ export const WordConnectionGame: React.FC<WordConnectionGameProps> = ({
     }
   };
 
-  const handleOnlineSubmit = (e: React.FormEvent) => {
+  const handleOnlineSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentInput.trim() || !onUpdateOnlineGameState) return;
 
     soundManager.playTap();
     const word = currentInput.trim();
 
-    if (isOnlineP1) {
-      const newGameState = { ...onlineRoom?.gameState, p1Answer: word };
-      if (onlineP2Word) {
-        const matched = normalize(word) === normalize(onlineP2Word);
-        if (matched || attempts >= 5) {
-          onRoundComplete(word, onlineP2Word, matched);
-        } else {
-          onUpdateOnlineGameState({
-            ...onlineRoom?.gameState,
-            p1Answer: '',
-            p2Answer: '',
-            clues: [word, onlineP2Word],
-            attempts: attempts + 1,
-          });
-        }
-      } else {
-        onUpdateOnlineGameState(newGameState);
-      }
-    } else {
-      const newGameState = { ...onlineRoom?.gameState, p2Answer: word };
-      if (onlineP1Word) {
-        const matched = normalize(onlineP1Word) === normalize(word);
-        if (matched || attempts >= 5) {
-          onRoundComplete(onlineP1Word, word, matched);
-        } else {
-          onUpdateOnlineGameState({
-            ...onlineRoom?.gameState,
-            p1Answer: '',
-            p2Answer: '',
-            clues: [onlineP1Word, word],
-            attempts: attempts + 1,
-          });
-        }
-      } else {
-        onUpdateOnlineGameState(newGameState);
-      }
-    }
+    await onUpdateOnlineGameState({ type: 'answer', value: word });
   };
 
   const activeClues = playMode === 'online' && onlineRoom?.gameState?.clues ? onlineRoom.gameState.clues : clues;

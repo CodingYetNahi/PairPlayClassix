@@ -81,10 +81,7 @@ export const TwoTruthsLieGame: React.FC<TwoTruthsLieGameProps> = ({
     if (statements.some((s) => !s.trim()) || lieIndex === null || !onUpdateOnlineGameState) return;
 
     soundManager.playTap();
-    onUpdateOnlineGameState({
-      ...onlineRoom?.gameState,
-      authorData: { statements, lieIndex },
-    });
+    onUpdateOnlineGameState({ type: 'truths-author', statements, lieIndex });
   };
 
   const handleGuesserPickOnline = (pickedIdx: number) => {
@@ -98,16 +95,7 @@ export const TwoTruthsLieGame: React.FC<TwoTruthsLieGameProps> = ({
     const authorSummary = `Lie was #${realLie + 1}: "${onlineAuthorData.statements[realLie]}"`;
     const guesserSummary = `Guessed #${pickedIdx + 1}: "${onlineAuthorData.statements[pickedIdx]}" (${isCorrect ? 'Correct!' : 'Wrong!'})`;
 
-    onUpdateOnlineGameState({ guessedIndex: pickedIdx,
-      p1Answer: isP1Author ? authorSummary : guesserSummary,
-      p2Answer: isP1Author ? guesserSummary : authorSummary });
-
-    onRoundComplete(
-      isP1Author ? authorSummary : guesserSummary,
-      isP1Author ? guesserSummary : authorSummary,
-      isCorrect,
-      winner
-    );
+    onUpdateOnlineGameState({ type: 'truths-guess', index: pickedIdx });
   };
 
   return (
