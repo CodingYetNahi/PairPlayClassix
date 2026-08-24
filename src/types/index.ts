@@ -65,6 +65,10 @@ export interface RoomData {
   score1: number;
   score2: number;
   gameState: any; // specific to current game
+  roundResult?: RoundResultSummary | null;
+  nextRoundAt?: number | null;
+  roundVersion?: number;
+  closeEnoughVotes?: Record<string, boolean>;
   createdAt: number;
   lastActiveAt: number;
   rematchRequestedBy?: string | null;
@@ -79,4 +83,5 @@ export interface RoundResultSummary {
   scoreAwardedP1?: number;
   scoreAwardedP2?: number;
   note?: string;
+  closeEnoughVotes?: number;
 }

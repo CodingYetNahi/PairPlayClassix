@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Trophy,
   Sparkles,
@@ -31,6 +31,7 @@ interface RoundResultScreenProps {
   hasVotedCloseEnough?: boolean;
   isHost: boolean;
   playMode: PlayMode;
+  nextRoundAt?: number | null;
 }
 
 export const RoundResultScreen: React.FC<RoundResultScreenProps> = ({
@@ -50,7 +51,15 @@ export const RoundResultScreen: React.FC<RoundResultScreenProps> = ({
   hasVotedCloseEnough,
   isHost,
   playMode,
+  nextRoundAt,
 }) => {
+  const [countdown, setCountdown] = useState(4);
+  useEffect(() => {
+    if (playMode !== 'online' || !nextRoundAt) return;
+    const update = () => setCountdown(Math.max(0, Math.ceil((nextRoundAt - Date.now()) / 1000)));
+    update(); const interval = window.setInterval(update, 250);
+    return () => window.clearInterval(interval);
+  }, [playMode, nextRoundAt]);
   useEffect(() => {
     if (isGameOver) {
       fireWinConfetti();
@@ -119,7 +128,7 @@ export const RoundResultScreen: React.FC<RoundResultScreenProps> = ({
           </div>
 
           {/* Close enough button for Match My Answer game if not exact match */}
-          {game.id === 'match-my-answer' && !lastRoundSummary.isMatch && !isGameOver && onCloseEnoughConfirm && (
+          {game.id === 'match-my-answer' && !lastRoundSummary.isMatch && onCloseEnoughConfirm && (
             <div className="pt-2 text-center">
               <button
                 type="button"
@@ -197,7 +206,11 @@ export const RoundResultScreen: React.FC<RoundResultScreenProps> = ({
 
       {/* Action Buttons */}
       <div className="space-y-3 pt-2">
-        {!isGameOver ? (
+        {!isGameOver && playMode === 'online' ? (
+          <div className="py-4 font-bold text-purple-700 dark:text-purple-300" aria-live="polite">
+            Next round starts in {countdown}…
+          </div>
+        ) : !isGameOver ? (
           <button
             type="button"
             onClick={() => {
@@ -210,7 +223,7 @@ export const RoundResultScreen: React.FC<RoundResultScreenProps> = ({
             <ArrowRight className="w-5 h-5" />
           </button>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          !isHost && playMode === 'online' ? <div className="py-4 text-sm font-semibold text-neutral-500">Waiting for the host to start a rematch or choose another game…</div> : <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button
               type="button"
               onClick={() => {

@@ -31,6 +31,7 @@ export const TruthOrDareGame: React.FC<TruthOrDareGameProps> = ({
 }) => {
   const isP1Turn = currentRound % 2 === 1;
   const activePlayer = isP1Turn ? player1 : player2;
+  const isActiveOnlinePlayer = playMode === 'local' || currentUid === (isP1Turn ? onlineRoom?.hostUid : onlineRoom?.guestUid);
 
   const [selectedType, setSelectedType] = useState<'truth' | 'dare' | null>(null);
   const [activeCategories, setActiveCategories] = useState<TruthOrDareCategory[]>([
@@ -39,7 +40,8 @@ export const TruthOrDareGame: React.FC<TruthOrDareGameProps> = ({
     'conversation',
     'challenges',
   ]);
-  const [currentItem, setCurrentItem] = useState<TruthOrDareCard | null>(null);
+  const [localItem, setCurrentItem] = useState<TruthOrDareCard | null>(null);
+  const currentItem = playMode === 'online' ? (onlineRoom?.gameState?.selectedCard as TruthOrDareCard | null) : localItem;
 
   const toggleCategory = (cat: TruthOrDareCategory) => {
     if (activeCategories.includes(cat)) {
@@ -52,6 +54,7 @@ export const TruthOrDareGame: React.FC<TruthOrDareGameProps> = ({
   };
 
   const pickCard = (type: 'truth' | 'dare') => {
+    if (!isActiveOnlinePlayer) return;
     soundManager.playSelect();
     setSelectedType(type);
 
@@ -61,16 +64,21 @@ export const TruthOrDareGame: React.FC<TruthOrDareGameProps> = ({
     const pool = filtered.length > 0 ? filtered : TRUTH_OR_DARE_CARDS.filter((i) => i.type === type);
     const randomPick = pool[Math.floor(Math.random() * pool.length)];
     setCurrentItem(randomPick);
+    if (playMode === 'online' && onUpdateOnlineGameState) onUpdateOnlineGameState({ selectedCard: randomPick });
   };
 
   const handleComplete = (completed: boolean) => {
-    if (!currentItem) return;
+    if (!currentItem || !isActiveOnlinePlayer) return;
     soundManager.playSuccess();
 
     const summaryText = completed
       ? `Completed ${currentItem.type.toUpperCase()}: "${currentItem.prompt}"`
       : `Skipped ${currentItem.type.toUpperCase()}: "${currentItem.prompt}" (No penalty)`;
 
+    if (playMode === 'online' && onUpdateOnlineGameState) {
+      onUpdateOnlineGameState({ p1Answer: isP1Turn ? summaryText : 'Cheered partner on!', p2Answer: isP1Turn ? 'Cheered partner on!' : summaryText, complete: true });
+      return;
+    }
     onRoundComplete(
       isP1Turn ? summaryText : 'Cheered partner on!',
       isP1Turn ? 'Cheered partner on!' : summaryText,

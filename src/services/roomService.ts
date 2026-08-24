@@ -7,9 +7,10 @@ import {
   serverTimestamp,
   deleteDoc,
   Unsubscribe,
+  runTransaction,
 } from 'firebase/firestore';
-import { db, ensureAnonymousUser, isFirebaseConfigured } from './firebase';
-import { RoomData, GameId, PlayerInfo } from '../types';
+import { db, isFirebaseConfigured } from './firebase';
+import { RoomData, GameId, PlayerInfo, RoundResultSummary } from '../types';
 
 // Safe uppercase characters excluding 0, O, 1, I, L
 const SAFE_CHARS = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
@@ -57,6 +58,10 @@ export async function createRoomInFirestore(
     score1: 0,
     score2: 0,
     gameState: null,
+    roundResult: null,
+    nextRoundAt: null,
+    roundVersion: 1,
+    closeEnoughVotes: {},
     createdAt: Date.now(),
     lastActiveAt: Date.now(),
     rematchRequestedBy: null,
@@ -163,21 +168,132 @@ export function subscribeToRoom(
 export async function setRoomGameSelection(
   roomCode: string,
   gameId: GameId,
-  totalRounds: number
+  totalRounds: number,
+  uid?: string
 ): Promise<void> {
-  if (!db) return;
+  if (!db) throw new Error('Unable to connect to the game room.');
   const roomRef = doc(db, 'rooms', roomCode.toUpperCase());
-  await updateDoc(roomRef, {
-    currentGameId: gameId,
-    totalRounds,
-    currentRound: 1,
-    score1: 0,
-    score2: 0,
-    status: 'playing',
-    gameState: null,
-    lastActiveAt: Date.now(),
-    rematchRequestedBy: null,
+  await runTransaction(db, async transaction => {
+    const snapshot = await transaction.get(roomRef);
+    if (!snapshot.exists()) throw new Error('Game room no longer exists.');
+    const room = snapshot.data() as RoomData;
+    if (uid && room.hostUid !== uid) throw new Error('Only the host can start a game.');
+    transaction.update(roomRef, {
+      currentGameId: gameId, totalRounds, currentRound: 1, score1: 0, score2: 0,
+      status: 'playing', gameState: null, roundResult: null, nextRoundAt: null,
+      closeEnoughVotes: {}, roundVersion: (room.roundVersion || 0) + 1,
+      lastActiveAt: Date.now(), rematchRequestedBy: null,
+    });
   });
+}
+
+const normalized = (value: unknown) => String(value ?? '').trim().toLocaleLowerCase();
+
+function winnerFor(gameId: GameId, p1: unknown, p2: unknown, round: number): Pick<RoundResultSummary, 'isMatch' | 'roundWinner'> {
+  if (gameId === 'rock-paper-scissors') {
+    if (p1 === p2) return { isMatch: true, roundWinner: null };
+    const p1Wins = (p1 === 'rock' && p2 === 'scissors') || (p1 === 'paper' && p2 === 'rock') || (p1 === 'scissors' && p2 === 'paper');
+    return { isMatch: false, roundWinner: p1Wins ? 'p1' : 'p2' };
+  }
+  const isMatch = normalized(p1) === normalized(p2);
+  if (gameId === 'know-me') return { isMatch, roundWinner: isMatch ? (round % 2 === 1 ? 'p2' : 'p1') : null };
+  return { isMatch, roundWinner: null };
+}
+
+/** Merge an action against the latest room snapshot and finalize a two-player round once. */
+export async function submitRoomAction(
+  roomCode: string, uid: string, gameId: GameId, expectedRound: number, action: Record<string, any>
+): Promise<void> {
+  if (!db) throw new Error('Unable to connect to the game room.');
+  const roomRef = doc(db, 'rooms', roomCode.toUpperCase());
+  await runTransaction(db, async transaction => {
+    const snapshot = await transaction.get(roomRef);
+    if (!snapshot.exists()) throw new Error('Game room no longer exists.');
+    const room = snapshot.data() as RoomData;
+    if (room.status !== 'playing' || room.currentGameId !== gameId || room.currentRound !== expectedRound)
+      throw new Error('This round has already changed. Please retry.');
+    const isP1 = uid === room.hostUid;
+    if (!isP1 && uid !== room.guestUid) throw new Error('You are not a member of this room.');
+    const state = { ...(room.gameState || {}) };
+    if (gameId === 'tic-tac-toe' && action.board !== undefined) {
+      const oldBoard = Array.isArray(state.board) ? state.board : Array(9).fill(null);
+      const expectedSymbol = isP1 ? 'X' : 'O';
+      if ((state.currentTurn || 'X') !== expectedSymbol || !Array.isArray(action.board) || action.board.length !== 9)
+        throw new Error('It is not your turn.');
+      const changes = action.board.filter((cell: unknown, index: number) => cell !== oldBoard[index]);
+      if (changes.length !== 1 || changes[0] !== expectedSymbol) throw new Error('That move is no longer available.');
+    }
+    const answerKey = isP1 ? 'p1Answer' : 'p2Answer';
+    const suppliedAnswer = action[answerKey];
+    if (suppliedAnswer !== undefined) {
+      if (state[answerKey] !== undefined && state[answerKey] !== '') throw new Error('Your answer was already submitted.');
+      state[answerKey] = suppliedAnswer;
+    }
+    // Role-based and board games pass these fields; the transaction still protects the round/version.
+    for (const key of ['authorData', 'guessedIndex', 'board', 'currentTurn', 'deck', 'visibleCards', 'matchedCards', 'pairScores', 'selectedCard', 'attempts', 'clues', 'complete']) {
+      if (action[key] !== undefined) state[key] = action[key];
+    }
+    let completed = state.p1Answer !== undefined && state.p2Answer !== undefined && state.p1Answer !== '' && state.p2Answer !== '';
+    let terminalWinner: 'p1' | 'p2' | 'draw' | null = null;
+    if (gameId === 'tic-tac-toe' && Array.isArray(state.board)) {
+      const b = state.board; const lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+      const symbol = lines.map(l => b[l[0]] && b[l[0]] === b[l[1]] && b[l[1]] === b[l[2]] ? b[l[0]] : null).find(Boolean);
+      completed = Boolean(symbol) || b.every(Boolean);
+      terminalWinner = symbol ? (symbol === 'X' ? 'p1' : 'p2') : completed ? 'draw' : null;
+    }
+    completed = completed || action.complete === true || (gameId === 'two-truths-lie' && state.guessedIndex !== undefined);
+    if (!completed) {
+      transaction.update(roomRef, { gameState: state, lastActiveAt: Date.now() });
+      return;
+    }
+    let resultBase = terminalWinner ? { isMatch: terminalWinner === 'draw', roundWinner: terminalWinner } : winnerFor(gameId, state.p1Answer, state.p2Answer, room.currentRound);
+    if (gameId === 'emoji-decoder') resultBase = { isMatch: true, roundWinner: room.currentRound % 2 === 1 ? 'p1' : 'p2' };
+    if (gameId === 'two-truths-lie' && state.authorData) {
+      const guesserWon = state.guessedIndex === state.authorData.lieIndex;
+      const authorIsP1 = room.currentRound % 2 === 1;
+      resultBase = { isMatch: guesserWon, roundWinner: guesserWon === authorIsP1 ? 'p2' : 'p1' };
+    }
+    const add1 = resultBase.roundWinner === 'p1' || (!resultBase.roundWinner && resultBase.isMatch) ? 1 : 0;
+    const add2 = resultBase.roundWinner === 'p2' || (!resultBase.roundWinner && resultBase.isMatch) ? 1 : 0;
+    const result: RoundResultSummary = { round: room.currentRound, player1Answer: state.p1Answer ?? action.p1Answer, player2Answer: state.p2Answer ?? action.p2Answer, ...resultBase, scoreAwardedP1: add1, scoreAwardedP2: add2 };
+    const isLast = room.currentRound >= room.totalRounds;
+    transaction.update(roomRef, {
+      gameState: state, roundResult: result, score1: room.score1 + add1, score2: room.score2 + add2,
+      status: isLast ? 'game_over' : 'round_result', nextRoundAt: isLast ? null : Date.now() + 4000,
+      closeEnoughVotes: {}, lastActiveAt: Date.now(),
+    });
+  });
+}
+
+export async function advanceSynchronizedRound(roomCode: string, expectedRound: number): Promise<void> {
+  if (!db) throw new Error('Unable to connect to the game room.');
+  const ref = doc(db, 'rooms', roomCode.toUpperCase());
+  await runTransaction(db, async transaction => {
+    const snap = await transaction.get(ref); if (!snap.exists()) return;
+    const room = snap.data() as RoomData;
+    if (room.status !== 'round_result' || room.currentRound !== expectedRound || !room.nextRoundAt || Date.now() < room.nextRoundAt) return;
+    transaction.update(ref, { currentRound: room.currentRound + 1, status: 'playing', gameState: null, roundResult: null, nextRoundAt: null, closeEnoughVotes: {}, roundVersion: (room.roundVersion || 0) + 1, lastActiveAt: Date.now() });
+  });
+}
+
+export async function voteCloseEnough(roomCode: string, uid: string, expectedRound: number): Promise<void> {
+  if (!db) throw new Error('Unable to connect to the game room.');
+  const ref = doc(db, 'rooms', roomCode.toUpperCase());
+  await runTransaction(db, async transaction => {
+    const snap = await transaction.get(ref); if (!snap.exists()) throw new Error('Game room no longer exists.');
+    const room = snap.data() as RoomData;
+    if ((room.status !== 'round_result' && room.status !== 'game_over') || room.currentRound !== expectedRound || room.currentGameId !== 'match-my-answer') throw new Error('Voting has closed.');
+    if (uid !== room.hostUid && uid !== room.guestUid) throw new Error('You are not a room member.');
+    const votes = { ...(room.closeEnoughVotes || {}) }; if (votes[uid]) return; votes[uid] = true;
+    const accepted = Boolean(votes[room.hostUid] && room.guestUid && votes[room.guestUid]);
+    transaction.update(ref, accepted ? { closeEnoughVotes: votes, score1: room.score1 + 1, score2: room.score2 + 1, roundResult: { ...room.roundResult, isMatch: true, note: 'Marked as Close Enough by both players! (+1 pt each)', closeEnoughVotes: 2 }, lastActiveAt: Date.now() } : { closeEnoughVotes: votes, lastActiveAt: Date.now() });
+  });
+}
+
+export async function returnRoomToLobby(roomCode: string, uid: string): Promise<void> {
+  if (!db) throw new Error('Unable to connect to the game room.');
+  const ref = doc(db, 'rooms', roomCode.toUpperCase());
+  await runTransaction(db, async transaction => { const snap = await transaction.get(ref); if (!snap.exists()) return; const room = snap.data() as RoomData; if (room.hostUid !== uid) throw new Error('Only the host can choose another game.'); transaction.update(ref, { status: 'lobby', currentGameId: null, gameState: null, roundResult: null, nextRoundAt: null, closeEnoughVotes: {}, lastActiveAt: Date.now() }); });
 }
 
 export async function advanceRoomRound(

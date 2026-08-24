@@ -35,8 +35,10 @@ import { isFirebaseConfigured } from './services/firebase';
 import {
   subscribeToRoom,
   setRoomGameSelection,
-  advanceRoomRound,
-  updateRoomGameState,
+  submitRoomAction,
+  advanceSynchronizedRound,
+  voteCloseEnough,
+  returnRoomToLobby,
   leaveRoomInFirestore,
 } from './services/roomService';
 import { soundManager } from './utils/audio';
@@ -86,6 +88,7 @@ export default function App() {
   // Online Multiplayer state
   const [onlineRoom, setOnlineRoom] = useState<RoomData | null>(null);
   const [currentUid, setCurrentUid] = useState<string | null>(null);
+  const [onlineWriteError, setOnlineWriteError] = useState<string | null>(null);
 
   // Modals state
   const [isPassDeviceOpen, setIsPassDeviceOpen] = useState<boolean>(false);
@@ -131,34 +134,35 @@ export default function App() {
       (updatedRoom) => {
         setOnlineRoom(updatedRoom);
 
-        // Sync player 2 info if guest joins
-        if (updatedRoom.player2) {
-          setPlayer2(updatedRoom.player2);
-        }
-
-        // Sync host info
-        if (updatedRoom.player1) {
-          setPlayer1(updatedRoom.player1);
-        }
-
-        // Sync active game & round
+        if (updatedRoom.player2) setPlayer2(updatedRoom.player2);
+        setPlayer1(updatedRoom.player1);
+        setTotalRounds(updatedRoom.totalRounds);
+        setCurrentRound(updatedRoom.currentRound);
+        setScore1(updatedRoom.score1);
+        setScore2(updatedRoom.score2);
+        setIsGameOver(updatedRoom.status === 'game_over');
+        setLastRoundSummary(updatedRoom.roundResult || null);
+        setHasVotedCloseEnough(Boolean(currentUid && updatedRoom.closeEnoughVotes?.[currentUid]));
         if (updatedRoom.currentGameId) {
           const matched = GAMES_LIST.find((g) => g.id === updatedRoom.currentGameId);
-          if (matched && (!activeGame || activeGame.id !== matched.id)) {
-            setActiveGame(matched);
-            setTotalRounds(updatedRoom.totalRounds);
-            setCurrentRound(updatedRoom.currentRound);
-            setScore1(updatedRoom.score1);
-            setScore2(updatedRoom.score2);
-            setIsGameOver(updatedRoom.status === 'game_over');
-            setCurrentScreen(updatedRoom.status === 'playing' ? 'game_play' : 'round_result');
-          }
+          if (matched) setActiveGame(matched);
         }
+        const screens: Record<RoomData['status'], AppScreen> = { lobby: 'game_select', playing: 'game_play', round_result: 'round_result', game_over: 'round_result' };
+        setCurrentScreen(screens[updatedRoom.status]);
       }
     );
 
     return () => unsubscribe();
-  }, [onlineRoom?.roomCode, activeGame]);
+  }, [onlineRoom?.roomCode, currentUid]);
+
+  useEffect(() => {
+    if (playMode !== 'online' || onlineRoom?.status !== 'round_result' || !onlineRoom.nextRoundAt) return;
+    const delay = Math.max(0, onlineRoom.nextRoundAt - Date.now());
+    const timer = window.setTimeout(() => {
+      advanceSynchronizedRound(onlineRoom.roomCode, onlineRoom.currentRound).catch(() => setOnlineWriteError('Could not start the next round. Retry.'));
+    }, delay + 50);
+    return () => window.clearTimeout(timer);
+  }, [playMode, onlineRoom?.roomCode, onlineRoom?.status, onlineRoom?.currentRound, onlineRoom?.nextRoundAt]);
 
   // Handlers
   const handleToggleDarkMode = () => {
@@ -214,7 +218,7 @@ export default function App() {
     setCurrentScreen('game_select');
   };
 
-  const handleStartGame = (game: GameMeta, rounds: number) => {
+  const handleStartGame = async (game: GameMeta, rounds: number) => {
     setActiveGame(game);
     setTotalRounds(rounds);
     setCurrentRound(1);
@@ -225,7 +229,8 @@ export default function App() {
     setHasVotedCloseEnough(false);
 
     if (playMode === 'online' && onlineRoom?.roomCode) {
-      setRoomGameSelection(onlineRoom.roomCode, game.id, rounds);
+      try { await setRoomGameSelection(onlineRoom.roomCode, game.id, rounds, currentUid || undefined); }
+      catch { setOnlineWriteError('Could not start the game. Retry.'); return; }
     }
 
     setCurrentScreen('game_play');
@@ -261,6 +266,7 @@ export default function App() {
     isMatch: boolean,
     roundWinner?: 'p1' | 'p2' | null
   ) => {
+    if (playMode === 'online') return; // The authoritative transaction publishes the shared result.
     let newScore1 = score1;
     let newScore2 = score2;
 
@@ -289,14 +295,14 @@ export default function App() {
     setLastRoundSummary(summary);
     setHasVotedCloseEnough(false);
 
-    if (playMode === 'online' && onlineRoom?.roomCode) {
-      advanceRoomRound(onlineRoom.roomCode, currentRound, newScore1, newScore2, isLastRound);
-    }
-
     setCurrentScreen('round_result');
   };
 
   const handleCloseEnoughConfirm = () => {
+    if (playMode === 'online' && onlineRoom && currentUid) {
+      voteCloseEnough(onlineRoom.roomCode, currentUid, currentRound).catch(() => setOnlineWriteError('Could not save your vote. Retry.'));
+      return;
+    }
     if (hasVotedCloseEnough) return;
     setHasVotedCloseEnough(true);
     setScore1((prev) => prev + 1);
@@ -324,7 +330,18 @@ export default function App() {
   };
 
   const handleSelectAnotherGame = () => {
+    if (playMode === 'online' && onlineRoom && currentUid) {
+      returnRoomToLobby(onlineRoom.roomCode, currentUid).catch(() => setOnlineWriteError('Could not return to game selection. Retry.'));
+      return;
+    }
     setCurrentScreen('game_select');
+  };
+
+  const updateOnlineState = (state: Record<string, any>) => {
+    if (!onlineRoom || !currentUid || !activeGame) return;
+    setOnlineWriteError(null);
+    submitRoomAction(onlineRoom.roomCode, currentUid, activeGame.id, currentRound, state)
+      .catch(() => setOnlineWriteError('Your action was not saved. Please retry.'));
   };
 
   const isHost = playMode === 'local' || (onlineRoom && currentUid === onlineRoom.hostUid);
@@ -349,6 +366,7 @@ export default function App() {
 
         {/* Main View Area */}
         <main className="flex-1 flex flex-col items-center justify-start pb-12 w-full">
+          {onlineWriteError && <div role="alert" className="m-3 rounded-xl bg-red-50 px-4 py-2 text-sm font-semibold text-red-700">{onlineWriteError} <button className="underline" onClick={() => setOnlineWriteError(null)}>Dismiss</button></div>}
           {currentScreen === 'home' && (
             <HomeScreen
               onSelectOneDevice={handleStartOneDeviceFlow}
@@ -384,9 +402,7 @@ export default function App() {
                   onlineRoom={onlineRoom}
                   onRoundComplete={handleRoundComplete}
                   onRequestPassDevice={handleRequestPassDevice}
-                  onUpdateOnlineGameState={(state) =>
-                    onlineRoom && updateRoomGameState(onlineRoom.roomCode, state)
-                  }
+                  onUpdateOnlineGameState={updateOnlineState}
                 />
               )}
 
@@ -401,9 +417,7 @@ export default function App() {
                   onlineRoom={onlineRoom}
                   onRoundComplete={handleRoundComplete}
                   onRequestPassDevice={handleRequestPassDevice}
-                  onUpdateOnlineGameState={(state) =>
-                    onlineRoom && updateRoomGameState(onlineRoom.roomCode, state)
-                  }
+                  onUpdateOnlineGameState={updateOnlineState}
                 />
               )}
 
@@ -418,9 +432,7 @@ export default function App() {
                   onlineRoom={onlineRoom}
                   onRoundComplete={handleRoundComplete}
                   onRequestPassDevice={handleRequestPassDevice}
-                  onUpdateOnlineGameState={(state) =>
-                    onlineRoom && updateRoomGameState(onlineRoom.roomCode, state)
-                  }
+                  onUpdateOnlineGameState={updateOnlineState}
                 />
               )}
 
@@ -435,9 +447,7 @@ export default function App() {
                   onlineRoom={onlineRoom}
                   onRoundComplete={handleRoundComplete}
                   onRequestPassDevice={handleRequestPassDevice}
-                  onUpdateOnlineGameState={(state) =>
-                    onlineRoom && updateRoomGameState(onlineRoom.roomCode, state)
-                  }
+                  onUpdateOnlineGameState={updateOnlineState}
                 />
               )}
 
@@ -452,9 +462,7 @@ export default function App() {
                   onlineRoom={onlineRoom}
                   onRoundComplete={handleRoundComplete}
                   onRequestPassDevice={handleRequestPassDevice}
-                  onUpdateOnlineGameState={(state) =>
-                    onlineRoom && updateRoomGameState(onlineRoom.roomCode, state)
-                  }
+                  onUpdateOnlineGameState={updateOnlineState}
                 />
               )}
 
@@ -469,9 +477,7 @@ export default function App() {
                   onlineRoom={onlineRoom}
                   onRoundComplete={handleRoundComplete}
                   onRequestPassDevice={handleRequestPassDevice}
-                  onUpdateOnlineGameState={(state) =>
-                    onlineRoom && updateRoomGameState(onlineRoom.roomCode, state)
-                  }
+                  onUpdateOnlineGameState={updateOnlineState}
                 />
               )}
 
@@ -486,9 +492,7 @@ export default function App() {
                   onlineRoom={onlineRoom}
                   onRoundComplete={handleRoundComplete}
                   onRequestPassDevice={handleRequestPassDevice}
-                  onUpdateOnlineGameState={(state) =>
-                    onlineRoom && updateRoomGameState(onlineRoom.roomCode, state)
-                  }
+                  onUpdateOnlineGameState={updateOnlineState}
                 />
               )}
 
@@ -503,9 +507,7 @@ export default function App() {
                   onlineRoom={onlineRoom}
                   onRoundComplete={handleRoundComplete}
                   onRequestPassDevice={handleRequestPassDevice}
-                  onUpdateOnlineGameState={(state) =>
-                    onlineRoom && updateRoomGameState(onlineRoom.roomCode, state)
-                  }
+                  onUpdateOnlineGameState={updateOnlineState}
                 />
               )}
 
@@ -520,9 +522,7 @@ export default function App() {
                   onlineRoom={onlineRoom}
                   onRoundComplete={handleRoundComplete}
                   onRequestPassDevice={handleRequestPassDevice}
-                  onUpdateOnlineGameState={(state) =>
-                    onlineRoom && updateRoomGameState(onlineRoom.roomCode, state)
-                  }
+                  onUpdateOnlineGameState={updateOnlineState}
                 />
               )}
 
@@ -537,9 +537,7 @@ export default function App() {
                   onlineRoom={onlineRoom}
                   onRoundComplete={handleRoundComplete}
                   onRequestPassDevice={handleRequestPassDevice}
-                  onUpdateOnlineGameState={(state) =>
-                    onlineRoom && updateRoomGameState(onlineRoom.roomCode, state)
-                  }
+                  onUpdateOnlineGameState={updateOnlineState}
                 />
               )}
 
@@ -554,9 +552,7 @@ export default function App() {
                   onlineRoom={onlineRoom}
                   onRoundComplete={handleRoundComplete}
                   onRequestPassDevice={handleRequestPassDevice}
-                  onUpdateOnlineGameState={(state) =>
-                    onlineRoom && updateRoomGameState(onlineRoom.roomCode, state)
-                  }
+                  onUpdateOnlineGameState={updateOnlineState}
                 />
               )}
 
@@ -571,9 +567,7 @@ export default function App() {
                   onlineRoom={onlineRoom}
                   onRoundComplete={handleRoundComplete}
                   onRequestPassDevice={handleRequestPassDevice}
-                  onUpdateOnlineGameState={(state) =>
-                    onlineRoom && updateRoomGameState(onlineRoom.roomCode, state)
-                  }
+                  onUpdateOnlineGameState={updateOnlineState}
                 />
               )}
             </div>
@@ -597,6 +591,7 @@ export default function App() {
               hasVotedCloseEnough={hasVotedCloseEnough}
               isHost={Boolean(isHost)}
               playMode={playMode}
+              nextRoundAt={onlineRoom?.nextRoundAt}
             />
           )}
         </main>
