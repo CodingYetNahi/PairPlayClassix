@@ -33,6 +33,14 @@ export class ErrorBoundary extends Component<Props, State> {
     window.location.reload();
   };
 
+  private handleClearSettings = () => {
+    try {
+      localStorage.removeItem('pairplay_dark_mode');
+    } finally {
+      window.location.reload();
+    }
+  };
+
   public override render() {
     if (this.state.hasError) {
       return (
@@ -47,11 +55,11 @@ export class ErrorBoundary extends Component<Props, State> {
             </div>
 
             <h2 className="text-2xl font-bold font-display text-neutral-800 dark:text-neutral-100 mb-2">
-              Something went slightly off track
+              PairPlay couldn’t start.
             </h2>
 
             <p className="text-neutral-600 dark:text-neutral-300 text-sm mb-6 leading-relaxed">
-              Don't worry, your games and scores can be safely restarted in a moment.
+              Reload the page to try again. If that doesn’t work, reset the local display settings.
             </p>
 
             <button
@@ -59,7 +67,13 @@ export class ErrorBoundary extends Component<Props, State> {
               className="w-full inline-flex items-center justify-center gap-2 bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-semibold py-3.5 px-6 rounded-2xl shadow-md transition-all active:scale-[0.98] cursor-pointer"
             >
               <RefreshCw className="w-4 h-4" />
-              <span>Reload PairPlay</span>
+              <span>Reload</span>
+            </button>
+            <button
+              onClick={this.handleClearSettings}
+              className="mt-3 w-full text-sm font-semibold text-neutral-600 dark:text-neutral-300 underline underline-offset-4"
+            >
+              Reset local settings
             </button>
           </div>
         </div>
