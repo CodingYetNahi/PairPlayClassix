@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { Navbar } from './components/common/Navbar';
 import { HomeScreen } from './components/screens/HomeScreen';
 import { GameSelectScreen } from './components/screens/GameSelectScreen';
@@ -48,8 +47,12 @@ type AppScreen = 'home' | 'game_select' | 'game_play' | 'round_result';
 export default function App() {
   // Theme & Sound state
   const [darkMode, setDarkMode] = useState<boolean>(() => {
-    const saved = localStorage.getItem('pairplay_dark_mode');
-    return saved ? JSON.parse(saved) : false;
+    try {
+      const saved = localStorage.getItem('pairplay_dark_mode');
+      return saved === 'true';
+    } catch {
+      return false;
+    }
   });
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
 
@@ -358,7 +361,6 @@ export default function App() {
   const isHost = playMode === 'local' || (onlineRoom && currentUid === onlineRoom.hostUid);
 
   return (
-    <ErrorBoundary>
       <div className="min-h-screen flex flex-col bg-amber-50/30 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 transition-colors duration-200 selection:bg-pink-500 selection:text-white">
         {/* Universal Top Navigation */}
         <Navbar
@@ -662,6 +664,5 @@ export default function App() {
           }}
         />
       </div>
-    </ErrorBoundary>
   );
 }
