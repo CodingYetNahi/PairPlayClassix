@@ -51,12 +51,35 @@ service cloud.firestore {
         return !(selectedGame || returnedToLobby || rematched) || isRoomHost();
       }
 
-      function scoreAndRoundChangeIsBounded() {
-        let hostReset = isRoomHost()
+      function isStartingGame() {
+        return request.resource.data.status == 'playing'
           && (request.resource.data.currentGameId != resource.data.currentGameId
-            || (resource.data.status == 'game_over' && request.resource.data.status == 'playing'));
-        return hostReset || (
-          request.resource.data.currentRound >= resource.data.currentRound
+            || resource.data.status == 'game_over');
+      }
+
+      function isValidHostGameReset() {
+        return isRoomHost()
+          && isStartingGame()
+          && request.resource.data.currentGameId != null
+          && request.resource.data.status == 'playing'
+          && request.resource.data.currentRound == 1
+          && request.resource.data.score1 == 0
+          && request.resource.data.score2 == 0
+          && request.resource.data.gameState == null
+          && request.resource.data.roundResult == null
+          && request.resource.data.nextRoundAt == null
+          && request.resource.data.closeEnoughVotes.size() == 0
+          && request.resource.data.roundHistory.size() == 0
+          && request.resource.data.totalRounds is int
+          && request.resource.data.totalRounds >= 1
+          && request.resource.data.totalRounds <= 20
+          && request.resource.data.roundVersion == resource.data.roundVersion + 1;
+      }
+
+      function scoreAndRoundChangeIsBounded() {
+        return isValidHostGameReset() || (!isStartingGame()
+          && request.resource.data.roundVersion >= resource.data.roundVersion
+          && request.resource.data.currentRound >= resource.data.currentRound
           && request.resource.data.currentRound <= resource.data.currentRound + 1
           && request.resource.data.score1 >= resource.data.score1
           && request.resource.data.score1 <= resource.data.score1 + 1

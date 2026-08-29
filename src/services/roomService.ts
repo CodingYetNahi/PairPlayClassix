@@ -12,7 +12,7 @@ import { db, isFirebaseConfigured } from './firebase';
 import { RoomData, GameId, OnlineGameAction, PlayerInfo, RoundResultSummary } from '../types';
 import { EMOJI_DECODER_PUZZLES } from '../data/emojiDecoderData';
 import { ROUND_RESULT_DELAY_MS, roundContentIndex } from '../utils/rounds';
-import { applyTicTacToeMove, nextRoundPatch, submitTwoPlayerAnswer, submitWordConnectionAnswer, validateActionContext } from './multiplayerState';
+import { applyTicTacToeMove, newGameResetPatch, nextRoundPatch, submitTwoPlayerAnswer, submitWordConnectionAnswer, validateActionContext } from './multiplayerState';
 
 // Safe uppercase characters excluding 0, O, 1, I, L
 const SAFE_CHARS = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
@@ -184,14 +184,14 @@ export async function setRoomGameSelection(
     if (room.hostUid !== uid) throw new Error('Only the host can start a game.');
     if (!room.guestUid || !room.player2) throw new Error('Wait for your partner to join.');
     if (room.status !== 'lobby' && room.status !== 'game_over') throw new Error('The current game is still in progress.');
-    if (!Number.isInteger(totalRounds) || totalRounds < 1 || totalRounds > 20) throw new Error('Invalid round count.');
-    transaction.update(roomRef, {
-      currentGameId: gameId, totalRounds, currentRound: 1, score1: 0, score2: 0,
-      status: 'playing', gameState: null, roundResult: null, nextRoundAt: null,
-      closeEnoughVotes: {}, roundVersion: (room.roundVersion || 0) + 1,
-      contentSeed: Date.now() ^ Math.floor(Math.random() * 0x7fffffff), roundHistory: [],
-      lastActiveAt: Date.now(), rematchRequestedBy: null,
-    });
+    const now = Date.now();
+    transaction.update(roomRef, newGameResetPatch(
+      room,
+      gameId,
+      totalRounds,
+      now ^ Math.floor(Math.random() * 0x7fffffff),
+      now,
+    ));
   });
 }
 

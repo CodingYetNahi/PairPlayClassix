@@ -2,6 +2,36 @@ import { GameId, RoomData } from '../types';
 
 export type PlayerRole = 'p1' | 'p2';
 
+/** Canonical state written when the host starts a game or rematch. */
+export function newGameResetPatch(
+  room: RoomData,
+  gameId: GameId,
+  totalRounds: number,
+  contentSeed: number,
+  now: number,
+): Partial<RoomData> {
+  if (!Number.isInteger(totalRounds) || totalRounds < 1 || totalRounds > 20) {
+    throw new Error('Invalid round count.');
+  }
+  return {
+    currentGameId: gameId,
+    totalRounds,
+    currentRound: 1,
+    score1: 0,
+    score2: 0,
+    status: 'playing',
+    gameState: null,
+    roundResult: null,
+    nextRoundAt: null,
+    closeEnoughVotes: {},
+    roundVersion: (room.roundVersion || 0) + 1,
+    contentSeed,
+    roundHistory: [],
+    lastActiveAt: now,
+    rematchRequestedBy: null,
+  };
+}
+
 export function validateActionContext(
   room: RoomData,
   uid: string,
