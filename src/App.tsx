@@ -58,7 +58,7 @@ export default function App() {
   const [playMode, setPlayMode] = useState<PlayMode>('local');
 
   // Players state
-  const [player1, setPlayer1] = useState<PlayerInfo>({
+  const [localPlayer1, setLocalPlayer1] = useState<PlayerInfo>({
     id: 'p1',
     name: 'Player 1',
     avatar: '🐱',
@@ -66,7 +66,7 @@ export default function App() {
     connected: true,
     isHost: true,
   });
-  const [player2, setPlayer2] = useState<PlayerInfo | null>({
+  const [localPlayer2, setLocalPlayer2] = useState<PlayerInfo | null>({
     id: 'p2',
     name: 'Player 2',
     avatar: '🐶',
@@ -76,24 +76,37 @@ export default function App() {
   });
 
   // Game session state
-  const [activeGame, setActiveGame] = useState<GameMeta | null>(null);
-  const [currentRound, setCurrentRound] = useState<number>(1);
-  const [totalRounds, setTotalRounds] = useState<number>(5);
-  const [score1, setScore1] = useState<number>(0);
-  const [score2, setScore2] = useState<number>(0);
-  const [isGameOver, setIsGameOver] = useState<boolean>(false);
-  const [lastRoundSummary, setLastRoundSummary] = useState<RoundResultSummary | null>(null);
-  const [roundHistory, setRoundHistory] = useState<RoundResultSummary[]>([]);
-  const [hasVotedCloseEnough, setHasVotedCloseEnough] = useState<boolean>(false);
+  const [localActiveGame, setLocalActiveGame] = useState<GameMeta | null>(null);
+  const [localCurrentRound, setLocalCurrentRound] = useState<number>(1);
+  const [localTotalRounds, setLocalTotalRounds] = useState<number>(5);
+  const [localScore1, setLocalScore1] = useState<number>(0);
+  const [localScore2, setLocalScore2] = useState<number>(0);
+  const [localIsGameOver, setLocalIsGameOver] = useState<boolean>(false);
+  const [localLastRoundSummary, setLocalLastRoundSummary] = useState<RoundResultSummary | null>(null);
+  const [localRoundHistory, setLocalRoundHistory] = useState<RoundResultSummary[]>([]);
+  const [localHasVotedCloseEnough, setLocalHasVotedCloseEnough] = useState<boolean>(false);
 
   // Online Multiplayer state
   const [onlineRoom, setOnlineRoom] = useState<RoomData | null>(null);
   const [currentUid, setCurrentUid] = useState<string | null>(null);
   const [onlineWriteError, setOnlineWriteError] = useState<string | null>(null);
 
+  // Online values are selectors over the latest Firestore snapshot; only local play owns mutable copies.
+  const player1 = playMode === 'online' && onlineRoom ? onlineRoom.player1 : localPlayer1;
+  const player2 = playMode === 'online' && onlineRoom ? onlineRoom.player2 ?? null : localPlayer2;
+  const activeGame = playMode === 'online' ? GAMES_LIST.find(game => game.id === onlineRoom?.currentGameId) ?? null : localActiveGame;
+  const currentRound = playMode === 'online' ? onlineRoom?.currentRound ?? 1 : localCurrentRound;
+  const totalRounds = playMode === 'online' ? onlineRoom?.totalRounds ?? 5 : localTotalRounds;
+  const score1 = playMode === 'online' ? onlineRoom?.score1 ?? 0 : localScore1;
+  const score2 = playMode === 'online' ? onlineRoom?.score2 ?? 0 : localScore2;
+  const isGameOver = playMode === 'online' ? onlineRoom?.status === 'game_over' : localIsGameOver;
+  const lastRoundSummary = playMode === 'online' ? onlineRoom?.roundResult ?? null : localLastRoundSummary;
+  const roundHistory = playMode === 'online' ? onlineRoom?.roundHistory ?? [] : localRoundHistory;
+  const hasVotedCloseEnough = playMode === 'online' ? Boolean(currentUid && onlineRoom?.closeEnoughVotes?.[currentUid]) : localHasVotedCloseEnough;
+
   // Modals state
   const [isPassDeviceOpen, setIsPassDeviceOpen] = useState<boolean>(false);
-  const [passDeviceTarget, setPassDeviceTarget] = useState<PlayerInfo>(player1);
+  const [passDeviceTarget, setPassDeviceTarget] = useState<PlayerInfo>(localPlayer1);
   const [passDevicePrompt, setPassDevicePrompt] = useState<string>('');
   const [passDeviceCallback, setPassDeviceCallback] = useState<(() => void) | null>(null);
 
@@ -140,20 +153,6 @@ export default function App() {
       (updatedRoom) => {
         setOnlineRoom(updatedRoom);
 
-        if (updatedRoom.player2) setPlayer2(updatedRoom.player2);
-        setPlayer1(updatedRoom.player1);
-        setTotalRounds(updatedRoom.totalRounds);
-        setCurrentRound(updatedRoom.currentRound);
-        setScore1(updatedRoom.score1);
-        setScore2(updatedRoom.score2);
-        setIsGameOver(updatedRoom.status === 'game_over');
-        setLastRoundSummary(updatedRoom.roundResult || null);
-        setRoundHistory(updatedRoom.roundHistory || []);
-        setHasVotedCloseEnough(Boolean(currentUid && updatedRoom.closeEnoughVotes?.[currentUid]));
-        if (updatedRoom.currentGameId) {
-          const matched = GAMES_LIST.find((g) => g.id === updatedRoom.currentGameId);
-          if (matched) setActiveGame(matched);
-        }
         const screens: Record<RoomData['status'], AppScreen> = { lobby: 'game_select', playing: 'game_play', round_result: 'round_result', game_over: 'round_result' };
         setCurrentScreen(screens[updatedRoom.status]);
       }
@@ -189,7 +188,7 @@ export default function App() {
     }
     setOnlineRoom(null);
     setCurrentUid(null);
-    setActiveGame(null);
+    setLocalActiveGame(null);
     setCurrentScreen('home');
   };
 
@@ -202,8 +201,8 @@ export default function App() {
   };
 
   const handleConfirmLocalPlayers = (p1: PlayerInfo, p2: PlayerInfo) => {
-    setPlayer1(p1);
-    setPlayer2(p2);
+    setLocalPlayer1(p1);
+    setLocalPlayer2(p2);
     setIsLocalSetupOpen(false);
     setCurrentScreen('game_select');
   };
@@ -223,30 +222,25 @@ export default function App() {
     setPlayMode('online');
     setOnlineRoom(room);
     setCurrentUid(uid);
-    setPlayer1(room.player1);
-    if (room.player2) {
-      setPlayer2(room.player2);
-    }
     setIsOnlineModalOpen(false);
     setCurrentScreen('game_select');
   };
 
   const handleStartGame = async (game: GameMeta, rounds: number) => {
-    setActiveGame(game);
-    setTotalRounds(rounds);
-    setCurrentRound(1);
-    setScore1(0);
-    setScore2(0);
-    setIsGameOver(false);
-    setLastRoundSummary(null);
-    setRoundHistory([]);
-    setHasVotedCloseEnough(false);
-
-    if ((playMode === 'online' || (onlineRoom && currentUid)) && onlineRoom?.roomCode) {
-      try { await setRoomGameSelection(onlineRoom.roomCode, game.id, rounds, currentUid || undefined); }
-      catch { setOnlineWriteError('Could not start the game. Retry.'); return; }
-      return; // The authoritative snapshot supplies the new roundVersion before gameplay is enabled.
+    if (playMode === 'online' && onlineRoom?.roomCode) {
+      try { await setRoomGameSelection(onlineRoom.roomCode, game.id, rounds, currentUid || ''); }
+      catch { setOnlineWriteError('Could not start the game. Retry.'); }
+      return;
     }
+    setLocalActiveGame(game);
+    setLocalTotalRounds(rounds);
+    setLocalCurrentRound(1);
+    setLocalScore1(0);
+    setLocalScore2(0);
+    setLocalIsGameOver(false);
+    setLocalLastRoundSummary(null);
+    setLocalRoundHistory([]);
+    setLocalHasVotedCloseEnough(false);
 
     sessionStorage.setItem('pairplay_content_seed', String(Date.now() ^ Math.floor(Math.random() * 0x7fffffff)));
     setCurrentScreen('game_play');
@@ -295,11 +289,11 @@ export default function App() {
       newScore2++;
     }
 
-    setScore1(newScore1);
-    setScore2(newScore2);
+    setLocalScore1(newScore1);
+    setLocalScore2(newScore2);
 
     const isLastRound = currentRound >= totalRounds;
-    setIsGameOver(isLastRound);
+    setLocalIsGameOver(isLastRound);
 
     const summary: RoundResultSummary = {
       round: currentRound,
@@ -308,9 +302,9 @@ export default function App() {
       isMatch,
       roundWinner,
     };
-    setLastRoundSummary(summary);
-    setRoundHistory((history) => history.some(item => item.round === summary.round) ? history : [...history, summary]);
-    setHasVotedCloseEnough(false);
+    setLocalLastRoundSummary(summary);
+    setLocalRoundHistory((history) => history.some(item => item.round === summary.round) ? history : [...history, summary]);
+    setLocalHasVotedCloseEnough(false);
 
     setCurrentScreen('round_result');
   };
@@ -321,11 +315,11 @@ export default function App() {
       return;
     }
     if (hasVotedCloseEnough) return;
-    setHasVotedCloseEnough(true);
-    setScore1((prev) => prev + 1);
-    setScore2((prev) => prev + 1);
+    setLocalHasVotedCloseEnough(true);
+    setLocalScore1((prev) => prev + 1);
+    setLocalScore2((prev) => prev + 1);
     if (lastRoundSummary) {
-      setLastRoundSummary({
+      setLocalLastRoundSummary({
         ...lastRoundSummary,
         isMatch: true,
         note: 'Marked as "Close Enough" by players! 💕 (+1 pt)',
@@ -334,9 +328,9 @@ export default function App() {
   };
 
   const handleNextRound = () => {
-    setCurrentRound((prev) => prev + 1);
-    setLastRoundSummary(null);
-    setHasVotedCloseEnough(false);
+    setLocalCurrentRound((prev) => prev + 1);
+    setLocalLastRoundSummary(null);
+    setLocalHasVotedCloseEnough(false);
     setCurrentScreen('game_play');
   };
 
@@ -358,7 +352,7 @@ export default function App() {
     if (!onlineRoom || !currentUid || !activeGame) throw new Error('Online room is unavailable.');
     setOnlineWriteError(null);
     try { await submitRoomAction(onlineRoom.roomCode, currentUid, activeGame.id, currentRound, onlineRoom.roundVersion || 0, action); }
-    catch (error) { setOnlineWriteError('Your action was not saved. Please retry.'); throw error; }
+    catch (error) { setOnlineWriteError('Connection changed. Syncing with your partner…'); throw error; }
   };
 
   const isHost = playMode === 'local' || (onlineRoom && currentUid === onlineRoom.hostUid);

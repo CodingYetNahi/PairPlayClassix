@@ -35,8 +35,13 @@ service cloud.firestore {
           && request.resource.data.hostUid == resource.data.hostUid
           && request.resource.data.createdAt == resource.data.createdAt
           && request.resource.data.player1.id == resource.data.player1.id
+          && request.resource.data.player1.name == resource.data.player1.name
+          && request.resource.data.player1.avatar == resource.data.player1.avatar
           && request.resource.data.guestUid == resource.data.guestUid
-          && (resource.data.guestUid == null || request.resource.data.player2.id == resource.data.player2.id);
+          && (resource.data.guestUid == null || (
+            request.resource.data.player2.id == resource.data.player2.id
+            && request.resource.data.player2.name == resource.data.player2.name
+            && request.resource.data.player2.avatar == resource.data.player2.avatar));
       }
 
       function hostOnlyTransitionIsValid() {
@@ -44,6 +49,19 @@ service cloud.firestore {
         let returnedToLobby = request.resource.data.status == 'lobby' && resource.data.status != 'lobby';
         let rematched = resource.data.status == 'game_over' && request.resource.data.status == 'playing';
         return !(selectedGame || returnedToLobby || rematched) || isRoomHost();
+      }
+
+      function scoreAndRoundChangeIsBounded() {
+        let hostReset = isRoomHost()
+          && (request.resource.data.currentGameId != resource.data.currentGameId
+            || (resource.data.status == 'game_over' && request.resource.data.status == 'playing'));
+        return hostReset || (
+          request.resource.data.currentRound >= resource.data.currentRound
+          && request.resource.data.currentRound <= resource.data.currentRound + 1
+          && request.resource.data.score1 >= resource.data.score1
+          && request.resource.data.score1 <= resource.data.score1 + 1
+          && request.resource.data.score2 >= resource.data.score2
+          && request.resource.data.score2 <= resource.data.score2 + 1);
       }
 
       // Read rules:
@@ -71,13 +89,7 @@ service cloud.firestore {
         (isRoomMember()
           && identitiesAreImmutable()
           && hostOnlyTransitionIsValid()
-          && (isRoomHost() || (
-            request.resource.data.currentRound >= resource.data.currentRound
-            && request.resource.data.currentRound <= resource.data.currentRound + 1
-            && request.resource.data.score1 >= resource.data.score1
-            && request.resource.data.score1 <= resource.data.score1 + 1
-            && request.resource.data.score2 >= resource.data.score2
-            && request.resource.data.score2 <= resource.data.score2 + 1)))
+          && scoreAndRoundChangeIsBounded())
         ||
         // Case B: Joining as guest into empty slot
         (
